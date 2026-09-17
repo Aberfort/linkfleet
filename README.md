@@ -5,7 +5,7 @@
 
 A self-hosted redirect-link manager with click analytics — group your links by site, get a short `/r/{code}` URL for each one, and see who's clicking from where.
 
-**Live demo:** https://frontend-production-34c4.up.railway.app
+**Live demo:** https://linkfleet.xyz
 **Demo login:** `demo@linkfleet.app` / `demo12345` (read-only — see [Demo account](#demo-account) below)
 
 ---
