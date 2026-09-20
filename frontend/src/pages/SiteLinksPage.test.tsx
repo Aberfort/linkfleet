@@ -32,6 +32,7 @@ const link: Link = {
     clicks_count: 42,
     expires_at: null,
     has_password: false,
+    short_url: 'https://api.example.test/r/promo',
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
 };
@@ -108,6 +109,23 @@ describe('SiteLinksPage', () => {
 
         const image = await screen.findByAltText('QR-код для /r/promo');
         expect(image).toHaveAttribute('src', expect.stringContaining('/qr/promo.svg'));
+    });
+
+    it('shows and copies the branded address once the site has a verified domain', async () => {
+        const branded: Link = { ...link, short_url: 'https://go.example.com/promo' };
+        vi.mocked(linksApi.listLinks).mockResolvedValue([branded]);
+        // jsdom ships no clipboard at all, so there is nothing to spy on.
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+
+        renderPage();
+
+        expect(await screen.findByText('go.example.com/promo')).toBeInTheDocument();
+        expect(screen.queryByText('/r/promo')).not.toBeInTheDocument();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Копіювати' }));
+
+        expect(writeText).toHaveBeenCalledWith('https://go.example.com/promo');
     });
 
     it('uploads a chosen CSV file and refreshes the list', async () => {

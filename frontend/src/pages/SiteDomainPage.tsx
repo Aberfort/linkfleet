@@ -26,10 +26,11 @@ import {
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { useAuth } from '../contexts/useAuth';
 import { getSite } from '../api/sites';
-import { getDomain, attachDomain, verifyDomain, detachDomain } from '../api/domains';
+import { getDomain, attachDomain, verifyDomain, checkDomain, detachDomain } from '../api/domains';
+import { fetchAppConfig } from '../api/config';
 import { errorMessage, validationErrors } from '../api/errors';
 import { publicBaseUrl } from '../api/client';
-import type { Domain, Site } from '../types';
+import type { Domain, DomainCheck, Site } from '../types';
 
 const shortLinkHost = new URL(publicBaseUrl).host;
 
@@ -74,13 +75,24 @@ function SiteDomainPage() {
     const [domain, setDomain] = useState<Domain | null>(null);
     const [loading, setLoading] = useState(true);
     const [verifying, setVerifying] = useState(false);
+    const [target, setTarget] = useState(shortLinkHost); // until /api/config says where this deployment wants domains pointed
+    const [check, setCheck] = useState<DomainCheck | null>(null);
+    const [checking, setChecking] = useState(false);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const [siteData, domainData] = await Promise.all([getSite(id), getDomain(id)]);
+            const [siteData, domainData, config] = await Promise.all([
+                getSite(id),
+                getDomain(id),
+                // The target is a nicety - never let it block the page.
+                fetchAppConfig().catch(() => null),
+            ]);
             setSite(siteData);
             setDomain(domainData);
+            if (config?.custom_domain_target) {
+                setTarget(config.custom_domain_target);
+            }
         } catch (error) {
             toast.error(errorMessage(error, 'Помилка при завантаженні домену.'));
         } finally {
@@ -107,6 +119,20 @@ function SiteDomainPage() {
         }
     };
 
+    const handleCheck = async () => {
+        if (!domain) {
+            return;
+        }
+        setChecking(true);
+        try {
+            setCheck(await checkDomain(domain.id));
+        } catch (error) {
+            toast.error(errorMessage(error, 'Не вдалося перевірити підключення.'));
+        } finally {
+            setChecking(false);
+        }
+    };
+
     const handleDetach = async () => {
         if (!domain || !window.confirm(`Відключити ${domain.host}? Посилання на ньому перестануть відкриватись.`)) {
             return;
@@ -114,6 +140,7 @@ function SiteDomainPage() {
         try {
             await detachDomain(domain.id);
             setDomain(null);
+            setCheck(null);
             toast.success('Домен відключено.');
         } catch (error) {
             toast.error(errorMessage(error, 'Помилка при відключенні домену.'));
@@ -228,18 +255,71 @@ function SiteDomainPage() {
                     )}
 
                     {domain.is_verified && (
-                        <Alert severity="warning" sx={{ mb: 2 }}>
-                            <AlertTitle>Володіння підтверджено, але домен ще не обслуговується</AlertTitle>
-                            Маршрутизація за доменом уже працює на боці застосунку. Щоб посилання
-                            реально відкривались на {domain.host}, лишилось направити його A/CNAME-записом
-                            сюди та випустити SSL-сертифікат — це наступний крок, якого ще немає.
-                        </Alert>
+                        <>
+                            <Typography sx={{ mb: 2 }}>
+                                Володіння підтверджено. Лишилось направити домен на цей застосунок —
+                                додай запис у DNS, а тоді перевір підключення.
+                            </Typography>
+                            <Table size="small" sx={{ mb: 1 }}>
+                                <TableBody>
+                                    <CopyableRow label="Тип" value="CNAME" />
+                                    <CopyableRow label="Ім'я" value={domain.host} />
+                                    <CopyableRow label="Значення" value={target} />
+                                </TableBody>
+                            </Table>
+                            {domain.host.split('.').length === 2 && (
+                                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                                    Кореневий домен не може мати CNAME у більшості DNS-провайдерів — використай
+                                    ALIAS/ANAME або A-запис на ті самі адреси.
+                                </Typography>
+                            )}
+
+                            {check && (
+                                <Alert
+                                    severity={check.https ? 'success' : 'warning'}
+                                    sx={{ my: 2 }}
+                                    icon={false}
+                                >
+                                    <AlertTitle>
+                                        {check.https
+                                            ? 'Домен працює'
+                                            : check.dns
+                                              ? 'DNS уже вказує сюди, сертифікат ще готується'
+                                              : `DNS ще не вказує на ${check.target}`}
+                                    </AlertTitle>
+                                    {check.https
+                                        ? `Посилання цього сайту відкриваються на https://${domain.host}/код.`
+                                        : check.dns
+                                          ? 'Зазвичай це до кількох хвилин — перевір ще раз трохи згодом.'
+                                          : 'Зміни в DNS можуть поширюватись до кількох годин.'}
+                                    <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                                        <Chip
+                                            size="small"
+                                            label="DNS"
+                                            color={check.dns ? 'success' : 'default'}
+                                            variant={check.dns ? 'filled' : 'outlined'}
+                                        />
+                                        <Chip
+                                            size="small"
+                                            label="HTTPS"
+                                            color={check.https ? 'success' : 'default'}
+                                            variant={check.https ? 'filled' : 'outlined'}
+                                        />
+                                    </Stack>
+                                </Alert>
+                            )}
+                        </>
                     )}
 
                     <Stack direction="row" spacing={1}>
                         {!domain.is_verified && (
                             <Button variant="contained" onClick={handleVerify} disabled={verifying || isDemo}>
                                 {verifying ? 'Перевіряю...' : 'Перевірити'}
+                            </Button>
+                        )}
+                        {domain.is_verified && (
+                            <Button variant="contained" onClick={handleCheck} disabled={checking}>
+                                {checking ? 'Перевіряю...' : 'Перевірити підключення'}
                             </Button>
                         )}
                         <Button color="error" onClick={handleDetach} disabled={isDemo}>

@@ -39,6 +39,7 @@ import { getSite } from '../api/sites';
 import { listLinks, deleteLink, toggleLink, importLinks } from '../api/links';
 import { errorMessage } from '../api/errors';
 import { publicBaseUrl } from '../api/client';
+import { shortLabel } from '../utils/shortUrl';
 import type { Site, Link as LinkType } from '../types';
 
 function isExpired(link: LinkType): boolean {
@@ -78,9 +79,9 @@ function SiteLinksPage() {
         fetchData();
     }, [fetchData]);
 
-    const handleCopy = async (shortCode: string) => {
+    const handleCopy = async (link: LinkType) => {
         try {
-            await navigator.clipboard.writeText(`${publicBaseUrl}/r/${shortCode}`);
+            await navigator.clipboard.writeText(link.short_url);
             toast.success('Посилання скопійовано.');
         } catch {
             toast.error('Не вдалося скопіювати посилання.');
@@ -213,9 +214,9 @@ function SiteLinksPage() {
                                 <TableRow key={link.id}>
                                     <TableCell>
                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                            <code>/r/{link.short_code}</code>
+                                            <code>{shortLabel(link)}</code>
                                             <Tooltip title="Копіювати">
-                                                <IconButton size="small" onClick={() => handleCopy(link.short_code)}>
+                                                <IconButton size="small" onClick={() => handleCopy(link)}>
                                                     <ContentCopyIcon fontSize="inherit" />
                                                 </IconButton>
                                             </Tooltip>
@@ -303,13 +304,13 @@ function SiteLinksPage() {
             )}
 
             <Dialog open={qrLink !== null} onClose={() => setQrLink(null)} maxWidth="xs" fullWidth>
-                <DialogTitle>QR-код: /r/{qrLink?.short_code}</DialogTitle>
+                <DialogTitle>QR-код: {qrLink && shortLabel(qrLink)}</DialogTitle>
                 <DialogContent>
                     {qrLink && (
                         <Box sx={{ display: 'flex', justifyContent: 'center', p: 1 }}>
                             <img
                                 src={`${publicBaseUrl}/qr/${qrLink.short_code}.svg`}
-                                alt={`QR-код для /r/${qrLink.short_code}`}
+                                alt={`QR-код для ${shortLabel(qrLink)}`}
                                 width={280}
                                 height={280}
                             />

@@ -6,11 +6,13 @@ import SiteDomainPage from './SiteDomainPage';
 import { useAuth } from '../contexts/useAuth';
 import * as sitesApi from '../api/sites';
 import * as domainsApi from '../api/domains';
+import * as configApi from '../api/config';
 import type { Domain, Site } from '../types';
 
 vi.mock('../contexts/useAuth');
 vi.mock('../api/sites');
 vi.mock('../api/domains');
+vi.mock('../api/config');
 vi.mock('react-toastify', () => ({
     toast: { success: vi.fn(), error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }));
@@ -51,6 +53,10 @@ describe('SiteDomainPage', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         vi.mocked(sitesApi.getSite).mockResolvedValue(site);
+        vi.mocked(configApi.fetchAppConfig).mockResolvedValue({
+            registration_enabled: true,
+            custom_domain_target: 'edge.example.net',
+        });
         vi.mocked(useAuth).mockReturnValue({
             user: { id: 1, name: 'User', email: 'u@example.com', is_demo: false },
             loading: false,
@@ -97,18 +103,62 @@ describe('SiteDomainPage', () => {
         expect(await screen.findByText('Підтверджено')).toBeInTheDocument();
     });
 
-    it('is upfront that a verified domain still needs SSL before it serves', async () => {
-        vi.mocked(domainsApi.getDomain).mockResolvedValue({
-            ...pending,
-            is_verified: true,
-            verified_at: '2026-01-02T00:00:00Z',
-        });
+    const verified: Domain = { ...pending, is_verified: true, verified_at: '2026-01-02T00:00:00Z' };
+
+    it('tells a verified domain where to point its DNS', async () => {
+        vi.mocked(domainsApi.getDomain).mockResolvedValue(verified);
 
         renderPage();
 
-        expect(
-            await screen.findByText(/ще не обслуговується/)
-        ).toBeInTheDocument();
+        expect(await screen.findByText('CNAME')).toBeInTheDocument();
+        expect(screen.getByText('edge.example.net')).toBeInTheDocument();
+        expect(screen.queryByText('tok_abc123')).not.toBeInTheDocument();
+    });
+
+    it('reports the domain as working once DNS and HTTPS both check out', async () => {
+        vi.mocked(domainsApi.getDomain).mockResolvedValue(verified);
+        vi.mocked(domainsApi.checkDomain).mockResolvedValue({ target: 'edge.example.net', dns: true, https: true });
+
+        renderPage();
+        await userEvent.click(await screen.findByRole('button', { name: 'Перевірити підключення' }));
+
+        expect(await screen.findByText('Домен працює')).toBeInTheDocument();
+        expect(domainsApi.checkDomain).toHaveBeenCalledWith(5);
+    });
+
+    it('says the certificate is pending when DNS is right but HTTPS is not up yet', async () => {
+        vi.mocked(domainsApi.getDomain).mockResolvedValue(verified);
+        vi.mocked(domainsApi.checkDomain).mockResolvedValue({ target: 'edge.example.net', dns: true, https: false });
+
+        renderPage();
+        await userEvent.click(await screen.findByRole('button', { name: 'Перевірити підключення' }));
+
+        expect(await screen.findByText('DNS уже вказує сюди, сертифікат ще готується')).toBeInTheDocument();
+    });
+
+    it('names the missing DNS target when the domain does not point here yet', async () => {
+        vi.mocked(domainsApi.getDomain).mockResolvedValue(verified);
+        vi.mocked(domainsApi.checkDomain).mockResolvedValue({ target: 'edge.example.net', dns: false, https: false });
+
+        renderPage();
+        await userEvent.click(await screen.findByRole('button', { name: 'Перевірити підключення' }));
+
+        expect(await screen.findByText('DNS ще не вказує на edge.example.net')).toBeInTheDocument();
+    });
+
+    it('lets the read-only demo account run the connection check', async () => {
+        vi.mocked(useAuth).mockReturnValue({
+            user: { id: 1, name: 'Demo', email: 'demo@linkfleet.app', is_demo: true },
+            loading: false,
+            login: vi.fn(),
+            register: vi.fn(),
+            logout: vi.fn(),
+        });
+        vi.mocked(domainsApi.getDomain).mockResolvedValue(verified);
+
+        renderPage();
+
+        expect(await screen.findByRole('button', { name: 'Перевірити підключення' })).toBeEnabled();
     });
 
     it('blocks the demo account from attaching a domain', async () => {

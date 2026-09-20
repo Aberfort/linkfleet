@@ -27,6 +27,8 @@ export interface Link {
     expires_at: string | null;
     /** The hash itself never leaves the server — this is all the UI gets. */
     has_password: boolean;
+    /** What to copy and share: the site's own domain when verified, else /r/{code}. */
+    short_url: string;
     created_at: string;
     updated_at: string;
 }
@@ -62,6 +64,7 @@ export interface Breakdown {
 export interface TopLink {
     id: number;
     short_code: string;
+    short_url: string;
     target_url: string;
     clicks_count: number;
 }
@@ -76,6 +79,16 @@ export interface Analytics {
 
 export interface AppConfig {
     registration_enabled: boolean;
+    /** Where a custom domain's DNS should point. */
+    custom_domain_target: string;
+}
+
+export interface DomainCheck {
+    target: string;
+    /** DNS leads to this app. */
+    dns: boolean;
+    /** A valid certificate answers on the host. */
+    https: boolean;
 }
 
 export interface ApiErrorPayload {

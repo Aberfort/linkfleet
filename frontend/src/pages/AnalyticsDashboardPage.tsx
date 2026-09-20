@@ -19,6 +19,7 @@ import { LineChart } from '@mui/x-charts/LineChart';
 import { BarChart } from '@mui/x-charts/BarChart';
 import { siteAnalytics, linkAnalytics } from '../api/analytics';
 import { errorMessage } from '../api/errors';
+import { shortLabel } from '../utils/shortUrl';
 import type { Analytics } from '../types';
 
 function BreakdownChart({ title, data }: { title: string; data: Analytics['referrers'] }) {
@@ -132,7 +133,7 @@ function AnalyticsDashboardPage() {
                                 {analytics.top_links.map((link) => (
                                     <TableRow key={link.id}>
                                         <TableCell>
-                                            <code>/r/{link.short_code}</code>
+                                            <code>{shortLabel(link)}</code>
                                         </TableCell>
                                         <TableCell
                                             sx={{
