@@ -3,11 +3,13 @@
 namespace App\Support;
 
 /**
- * Thin seam over dns_get_record so domain verification can be tested
+ * Thin seam over the DNS lookup so domain verification can be tested
  * without touching the network - tests bind a fake in the container.
  */
 class DnsTxtLookup
 {
+    public function __construct(private DohResolver $resolver) {}
+
     /**
      * Every TXT value published at $name, or an empty array when the name
      * doesn't resolve.
@@ -16,16 +18,17 @@ class DnsTxtLookup
      */
     public function txtValues(string $name): array
     {
-        // @ suppresses the PHP warning a non-existent name produces; the
-        // false return is handled right below.
-        $records = @dns_get_record($name, DNS_TXT);
+        return array_map($this->unquote(...), $this->resolver->lookup($name, 'TXT'));
+    }
 
-        if ($records === false) {
-            return [];
-        }
+    /**
+     * DoH hands TXT data back the way it appears in a zone file: quoted, and
+     * split into 255-byte chunks for long values ("part one" "part two").
+     */
+    private function unquote(string $data): string
+    {
+        preg_match_all('/"((?:[^"\\\\]|\\\\.)*)"/', $data, $chunks);
 
-        return array_values(array_filter(
-            array_map(fn (array $record) => $record['txt'] ?? null, $records)
-        ));
+        return $chunks[1] === [] ? $data : stripcslashes(implode('', $chunks[1]));
     }
 }

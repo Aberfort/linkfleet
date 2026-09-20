@@ -15,6 +15,8 @@ class QrCodeController extends Controller
      * Public on purpose: the QR just encodes the short URL, which whoever
      * has the code can already visit - so there's nothing to leak, and
      * being public means it can be dropped straight into an <img src>.
+     * It encodes the branded address when the site has a verified domain,
+     * so a printed code keeps working the same way the copied link does.
      */
     public function show(string $code): Response
     {
@@ -26,7 +28,7 @@ class QrCodeController extends Controller
 
         $result = (new Builder(
             writer: new SvgWriter,
-            data: route('links.redirect', ['code' => $link->short_code]),
+            data: $link->short_url,
             errorCorrectionLevel: ErrorCorrectionLevel::Medium,
             size: 320,
             margin: 8,

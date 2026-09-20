@@ -26,10 +26,14 @@ class Link extends Model
      */
     protected $hidden = [
         'password',
+        // Loaded only so short_url can see the site's domain - it isn't part
+        // of the link's own shape and would otherwise bloat every response.
+        'site',
     ];
 
     protected $appends = [
         'has_password',
+        'short_url',
     ];
 
     protected $casts = [
@@ -71,6 +75,21 @@ class Link extends Model
     protected function hasPassword(): Attribute
     {
         return Attribute::get(fn (): bool => $this->isPasswordProtected());
+    }
+
+    /**
+     * The address a visitor should actually use: the site's own domain once
+     * that's verified, the app's shared /r/{code} route otherwise.
+     */
+    protected function shortUrl(): Attribute
+    {
+        return Attribute::get(function (): string {
+            $domain = $this->site?->customDomain;
+
+            return $domain?->is_verified
+                ? "https://{$domain->host}/{$this->short_code}"
+                : route('links.redirect', ['code' => $this->short_code]);
+        });
     }
 
     public function site(): BelongsTo

@@ -6,6 +6,7 @@ use App\Models\Domain;
 use App\Models\Site;
 use App\Models\User;
 use App\Support\DnsTxtLookup;
+use App\Support\DomainProbe;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -211,5 +212,92 @@ class DomainTest extends TestCase
             ->assertNoContent();
 
         $this->assertDatabaseCount('domains', 0);
+    }
+
+    /** Swaps the probe seam: what DNS points at, and whether HTTPS answers. */
+    private function fakeProbe(bool $dns, bool $https): void
+    {
+        $this->instance(DomainProbe::class, new class($dns, $https) extends DomainProbe
+        {
+            public function __construct(private bool $dns, private bool $https) {}
+
+            public function pointsAt(string $host, string $target): bool
+            {
+                return $this->dns;
+            }
+
+            public function servesOverHttps(string $host): bool
+            {
+                return $this->https;
+            }
+        });
+    }
+
+    public function test_check_reports_live_when_dns_and_https_are_both_ready(): void
+    {
+        config(['features.custom_domain_target' => 'edge.example.net']);
+        $this->fakeProbe(dns: true, https: true);
+        $user = User::factory()->create();
+        $domain = Domain::factory()->for(Site::factory()->for($user))->verified()->create();
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/domains/{$domain->id}/check")
+            ->assertOk()
+            ->assertExactJson(['target' => 'edge.example.net', 'dns' => true, 'https' => true]);
+    }
+
+    public function test_check_reports_dns_ready_but_certificate_still_pending(): void
+    {
+        $this->fakeProbe(dns: true, https: false);
+        $user = User::factory()->create();
+        $domain = Domain::factory()->for(Site::factory()->for($user))->verified()->create();
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/domains/{$domain->id}/check")
+            ->assertOk()
+            ->assertJsonPath('dns', true)
+            ->assertJsonPath('https', false);
+    }
+
+    public function test_check_never_probes_https_while_dns_points_elsewhere(): void
+    {
+        // https would answer true - the point is it must not even be asked.
+        $this->fakeProbe(dns: false, https: true);
+        $user = User::factory()->create();
+        $domain = Domain::factory()->for(Site::factory()->for($user))->verified()->create();
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/domains/{$domain->id}/check")
+            ->assertOk()
+            ->assertJsonPath('dns', false)
+            ->assertJsonPath('https', false);
+    }
+
+    public function test_check_requires_the_domain_to_be_verified_first(): void
+    {
+        $user = User::factory()->create();
+        $domain = Domain::factory()->for(Site::factory()->for($user))->create();
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/domains/{$domain->id}/check")
+            ->assertStatus(409);
+    }
+
+    public function test_check_is_denied_for_someone_elses_domain(): void
+    {
+        $domain = Domain::factory()->for(Site::factory()->for(User::factory()))->verified()->create();
+
+        $this->actingAs(User::factory()->create(), 'sanctum')
+            ->postJson("/api/domains/{$domain->id}/check")
+            ->assertForbidden();
+    }
+
+    public function test_config_tells_the_frontend_where_domains_should_point(): void
+    {
+        config(['features.custom_domain_target' => 'edge.example.net']);
+
+        $this->getJson('/api/config')
+            ->assertOk()
+            ->assertJsonPath('custom_domain_target', 'edge.example.net');
     }
 }

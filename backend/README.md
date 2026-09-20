@@ -37,7 +37,7 @@ Ownership is enforced by [Policies](app/Policies) (`SitePolicy`, `LinkPolicy`), 
 | POST | `/api/login` | — | |
 | POST | `/api/logout` | ✓ | |
 | GET | `/api/user` | ✓ | |
-| GET | `/api/config` | — | `{ registration_enabled }` |
+| GET | `/api/config` | — | `{ registration_enabled, custom_domain_target }` |
 | GET/POST | `/api/sites` | ✓ | |
 | GET/PUT/DELETE | `/api/sites/{site}` | ✓ | |
 | GET/POST | `/api/sites/{site}/links` | ✓ | |
@@ -49,6 +49,7 @@ Ownership is enforced by [Policies](app/Policies) (`SitePolicy`, `LinkPolicy`), 
 | GET | `/api/sites/{site}/domain` | ✓ | `{ domain: … \| null }` |
 | POST | `/api/sites/{site}/domain` | ✓ | attach a custom domain, replacing any existing one |
 | POST | `/api/domains/{domain}/verify` | ✓ | DNS TXT check; 422 while the record is missing |
+| POST | `/api/domains/{domain}/check` | ✓ | `{ target, dns, https }` — is it wired up yet |
 | DELETE | `/api/domains/{domain}` | ✓ | |
 | GET | `/r/{code}` | — | the actual redirect (302 + click logging) |
 | POST | `/r/{code}` | — | password gate submit |
@@ -63,14 +64,19 @@ Ownership is enforced by [Policies](app/Policies) (`SitePolicy`, `LinkPolicy`), 
 
 ### Custom domains
 
-A site can claim one hostname. Ownership is proven with a DNS TXT record — `_linkfleet.<host>` holding the domain's `verification_token` — checked through `Support\DnsTxtLookup`, a thin seam over `dns_get_record()` so tests never touch the network.
+A site can claim one hostname, and getting it live is three separate steps — each one checked, so the UI can say which is still missing:
 
-Once verified, that host serves the site's links at the root: `go.example.com/summer-sale` resolves the same link as `/r/summer-sale`, logs the same click, and honours the same expiry and password gate. The catch-all route is registered last in `routes/web.php` and only matches when the request's `Host` belongs to a *verified* domain, so `/`, `/up`, `/r/…` and `/qr/…` keep their meaning and an unverified or unknown host gets a 404.
+1. **Ownership.** A DNS TXT record, `_linkfleet.<host>`, holding the domain's `verification_token`. `POST /api/domains/{domain}/verify` reads it.
+2. **Pointing.** A CNAME to `CUSTOM_DOMAIN_CNAME_TARGET` (defaults to the app's own host), or A records resolving to the same addresses for an apex domain.
+3. **Certificate.** Something in front of the app must terminate TLS for that host. `POST /api/domains/{domain}/check` reports `{ dns, https }` — DNS pointing at the target, then `https://<host>/up` answering with a valid certificate — and doesn't even try HTTPS while DNS is still wrong.
 
-Two things are deliberately **not** here, because they need a real domain to build against:
+Once verified, that host serves the site's links at the root: `go.example.com/summer-sale` resolves the same link as `/r/summer-sale`, logs the same click, and honours the same expiry and password gate. The catch-all route is registered last in `routes/web.php` and only matches when the request's `Host` belongs to a *verified* domain, so `/`, `/up`, `/r/…` and `/qr/…` keep their meaning and an unverified or unknown host gets a 404. Links and QR codes report the branded address through their `short_url`.
 
-- pointing the host at the app (A/CNAME) and issuing its TLS certificate;
-- per-domain short codes. `links.short_code` stays globally unique, so two sites can't both own `summer-sale`. Scoping codes per domain is the natural follow-up once a domain can actually serve traffic.
+All lookups go through `Support\DohResolver` (DNS over HTTPS, `DNS_OVER_HTTPS_URL`) rather than the system resolver: the names are customer-supplied, and a nameserver that never answers would otherwise hold a PHP worker for as long as the resolver cares to wait. Every lookup has a 3 s timeout, and `verify`/`check` are throttled. Tests fake the HTTP layer, so none touch the network.
+
+What LinkFleet does **not** do is issue certificates or register the host with your platform — that's the part outside the app. On Railway it means adding the domain to the backend service; on a VPS, a reverse proxy such as Caddy in front of the app. Also still open: per-domain short codes. `links.short_code` stays globally unique, so two sites can't both own `summer-sale`.
+
+Set `DEMO_DOMAIN` to have the seeder attach a pre-verified domain to the demo account's Docs site — only do that on a deployment that has really pointed the host at itself.
 
 ### CSV import
 
@@ -90,7 +96,7 @@ Rows are validated individually and capped at 1000 per file — a bad row is ski
 vendor/bin/phpunit
 ```
 
-81 Feature/Unit tests — auth flow, ownership boundaries (cross-user 403s, demo-account write blocks), the redirect+click-logging path, analytics aggregation, custom-domain verification and host-based routing. `phpunit.xml` runs against an in-memory SQLite database, so no service container/setup needed.
+106 Feature/Unit tests — auth flow, ownership boundaries (cross-user 403s, demo-account write blocks), the redirect+click-logging path, analytics aggregation, custom-domain verification and host-based routing. `phpunit.xml` runs against an in-memory SQLite database, so no service container/setup needed.
 
 ```bash
 vendor/bin/pint          # check code style
@@ -106,7 +112,7 @@ app/
   Http/Requests/     Validation + authorization (FormRequest::authorize())
   Models/            User, Site, Link, Click, Domain
   Policies/          Ownership checks
-  Support/           UserAgentParser, ClientIp, DnsTxtLookup - small, framework-agnostic helpers
+  Support/           UserAgentParser, ClientIp, DohResolver, DnsTxtLookup, DomainProbe - small helpers; the DNS ones are test seams
 database/
   migrations/
   seeders/           DemoUserSeeder, DemoDataSeeder (idempotent, run on every deploy)

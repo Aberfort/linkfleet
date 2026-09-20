@@ -23,7 +23,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/sites/{site}/domain', [DomainController::class, 'show']);
     Route::post('/sites/{site}/domain', [DomainController::class, 'store']);
-    Route::post('/domains/{domain}/verify', [DomainController::class, 'verify']);
+    // Both make outbound lookups for a customer-supplied host, hence the tight limit.
+    Route::post('/domains/{domain}/verify', [DomainController::class, 'verify'])->middleware('throttle:10,1');
+    Route::post('/domains/{domain}/check', [DomainController::class, 'check'])->middleware('throttle:10,1');
     Route::delete('/domains/{domain}', [DomainController::class, 'destroy']);
 
     Route::apiResource('sites.links', LinkController::class)->shallow();

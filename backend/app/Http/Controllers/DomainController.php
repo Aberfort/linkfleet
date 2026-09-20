@@ -6,6 +6,7 @@ use App\Http\Requests\StoreDomainRequest;
 use App\Models\Domain;
 use App\Models\Site;
 use App\Support\DnsTxtLookup;
+use App\Support\DomainProbe;
 
 class DomainController extends Controller
 {
@@ -46,6 +47,32 @@ class DomainController extends Controller
         $domain->forceFill(['verified_at' => now()])->save();
 
         return response()->json($domain);
+    }
+
+    /**
+     * Whether the (already verified) domain is actually wired up: DNS
+     * pointing at us, then a valid certificate answering on that host.
+     * Read-only, so it's allowed for the demo account too.
+     */
+    public function check(Domain $domain, DomainProbe $probe)
+    {
+        $this->authorize('view', $domain);
+
+        if (! $domain->is_verified) {
+            return response()->json([
+                'message' => 'Спершу підтвердіть володіння доменом.',
+            ], 409);
+        }
+
+        $target = config('features.custom_domain_target');
+        $dns = $probe->pointsAt($domain->host, $target);
+
+        return response()->json([
+            'target' => $target,
+            'dns' => $dns,
+            // No point knocking on a host that doesn't lead here yet.
+            'https' => $dns && $probe->servesOverHttps($domain->host),
+        ]);
     }
 
     public function destroy(Domain $domain)

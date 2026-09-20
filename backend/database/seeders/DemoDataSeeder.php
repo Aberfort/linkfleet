@@ -54,6 +54,27 @@ class DemoDataSeeder extends Seeder
         $this->seedLink($marketing, 'newsletter', 'https://example.com/newsletter', 65);
         $this->seedLink($docs, 'getting-started', 'https://docs.example.com/getting-started', 95);
         $this->seedLink($docs, 'api-reference', 'https://docs.example.com/api', 40);
+
+        $this->seedDomain($docs);
+    }
+
+    /**
+     * Opt-in through DEMO_DOMAIN: only a deployment that has really pointed
+     * a host at itself should advertise one. It's marked verified directly -
+     * the demo account is read-only, so it couldn't run the TXT flow itself.
+     */
+    private function seedDomain(Site $site): void
+    {
+        $host = config('features.demo_domain');
+
+        if (! $host) {
+            return;
+        }
+
+        $domain = $site->customDomain()->firstOrNew();
+        $domain->host = strtolower($host);
+        $domain->verified_at ??= now();
+        $domain->save();
     }
 
     private function seedLink(Site $site, string $shortCode, string $targetUrl, int $clickCount): void

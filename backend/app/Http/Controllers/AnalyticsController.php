@@ -15,10 +15,13 @@ class AnalyticsController extends Controller
         $this->authorize('view', $site);
 
         return $this->build(Click::query()->whereIn('link_id', $site->links()->pluck('id')), [
+            // site_id and password are selected only so the appended
+            // short_url / has_password come out right; password stays hidden.
             'top_links' => $site->links()
                 ->orderByDesc('clicks_count')
                 ->limit(10)
-                ->get(['id', 'short_code', 'target_url', 'clicks_count']),
+                ->get(['id', 'site_id', 'short_code', 'target_url', 'clicks_count', 'password'])
+                ->each(fn (Link $link) => $link->setRelation('site', $site->loadMissing('customDomain'))),
         ]);
     }
 

@@ -16,7 +16,12 @@ class LinkController extends Controller
     {
         $this->authorize('view', $site);
 
-        return $site->links()->latest()->get();
+        // Hand each link the site we already have, so short_url doesn't
+        // cost two extra queries per row.
+        $site->load('customDomain');
+
+        return $site->links()->latest()->get()
+            ->each(fn (Link $link) => $link->setRelation('site', $site));
     }
 
     public function store(StoreLinkRequest $request, Site $site)

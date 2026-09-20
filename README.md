@@ -20,7 +20,7 @@ A self-hosted redirect-link manager with click analytics — group your links by
 - **Expiring and password-protected links**: give a link a deadline (it answers `410 Gone` afterwards) or put a password gate in front of it — the click only counts once the visitor is through.
 - **QR code per link**, generated on the fly and public, so it can be embedded straight into a page or a printout.
 - **CSV import** for moving a batch of links in at once, with per-row errors reported back instead of failing the whole file.
-- **Custom domains**, verified by a DNS TXT record. Once verified, that host serves the site's links at the root — `go.example.com/summer-sale` — with the same click logging, expiry and password gate. See the [limitations](#honest-limitations) below for what's still missing.
+- **Custom domains**, verified by a DNS TXT record. Once verified, that host serves the site's links at the root — `go.example.com/summer-sale` — with the same click logging, expiry and password gate, and copied links and QR codes switch to the branded address. The dashboard walks each domain through ownership → DNS → HTTPS and reports which step is still missing.
 
 ## Architecture
 
@@ -139,7 +139,7 @@ Each half also has its own README with more detail: [backend/README.md](backend/
 - No geolocation on clicks — deliberately out of scope (see [`app/Support/ClientIp.php`](backend/app/Support/ClientIp.php)'s comment): it would mean either a paid IP-geo API or bundling/hosting a GeoIP database, neither of which felt worth the added infrastructure for what this project is.
 - Analytics window is a fixed 30 days; no custom date-range picker yet.
 - No team/multi-user sites — a site has exactly one owner.
-- Custom domains stop short of actually serving traffic: ownership verification and host-based routing are done and tested, but pointing the host at the app (A/CNAME) and issuing its TLS certificate are not. Related: `short_code` is still globally unique, so two sites can't both own `summer-sale` — scoping codes per domain is the follow-up once a domain can serve traffic.
+- Custom domains are checked, not provisioned: LinkFleet verifies ownership and reports whether DNS and HTTPS are ready, but issuing the certificate and registering the host with the platform (a Railway custom domain, or a Caddy/nginx block on a VPS) is done outside the app. `short_code` is also still globally unique, so two sites can't both own `summer-sale`.
 
 ## License
 
