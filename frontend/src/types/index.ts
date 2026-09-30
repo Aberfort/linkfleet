@@ -26,6 +26,36 @@ export interface Member {
     joined_at: string;
 }
 
+export type WebhookEventName = 'link.created' | 'link.updated' | 'link.deleted' | 'link.clicked';
+
+export interface WebhookDelivery {
+    id: number;
+    webhook_id: number;
+    event: WebhookEventName | 'ping';
+    payload: unknown;
+    /** Null when nothing came back at all (blocked address, timeout, refused). */
+    status_code: number | null;
+    success: boolean;
+    error: string | null;
+    response_excerpt: string | null;
+    attempt: number;
+    duration_ms: number;
+    created_at: string;
+}
+
+export interface Webhook {
+    id: number;
+    workspace_id: number;
+    url: string;
+    events: WebhookEventName[];
+    is_active: boolean;
+    created_at: string;
+    updated_at: string;
+    latest_delivery: Pick<WebhookDelivery, 'success' | 'status_code' | 'event' | 'created_at'> | null;
+    /** Present only in the responses to create and rotate-secret - the one time it is shown. */
+    secret?: string;
+}
+
 export type ApiKeyAccess = 'read' | 'write';
 
 export interface ApiKey {

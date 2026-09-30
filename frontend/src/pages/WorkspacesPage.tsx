@@ -28,6 +28,7 @@ import {
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import GroupIcon from '@mui/icons-material/Group';
+import WebhookIcon from '@mui/icons-material/Webhook';
 import { useAuth } from '../contexts/useAuth';
 import { listWorkspaces, createWorkspace, renameWorkspace, deleteWorkspace } from '../api/workspaces';
 import { errorMessage, validationErrors } from '../api/errors';
@@ -140,6 +141,17 @@ function WorkspacesPage() {
                                                 <GroupIcon fontSize="small" />
                                             </IconButton>
                                         </Tooltip>
+                                        {isOwner(workspace.role) && (
+                                            <Tooltip title="Вебхуки">
+                                                <IconButton
+                                                    component={RouterLink}
+                                                    to={`/workspaces/${workspace.id}/webhooks`}
+                                                    aria-label="Вебхуки"
+                                                >
+                                                    <WebhookIcon fontSize="small" />
+                                                </IconButton>
+                                            </Tooltip>
+                                        )}
                                         <Tooltip title="Перейменувати">
                                             <span>
                                                 <IconButton
