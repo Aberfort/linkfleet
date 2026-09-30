@@ -36,6 +36,7 @@ import { shortLabel } from '../utils/shortUrl';
 import { delta, type Delta } from '../utils/delta';
 import { saveBlob } from '../utils/download';
 import { formatMoney, formatRate } from '../utils/format';
+import { countryLabel } from '../utils/country';
 import type { Analytics, AnalyticsQuery, Money } from '../types';
 
 const PRESETS = [
@@ -63,6 +64,52 @@ function BreakdownChart({ title, data }: { title: string; data: Analytics['refer
                     series={[{ data: data.map((d) => d.clicks), label: 'Кліки' }]}
                     margin={{ left: 100 }}
                 />
+            )}
+        </Paper>
+    );
+}
+
+/**
+ * Where the clicks came from. Placed from the visitor's address while the
+ * click is recorded, against a database on this server, and only the country
+ * is kept.
+ */
+function CountriesCard({ countries, geo }: { countries: Analytics['countries']; geo: Analytics['geo'] }) {
+    const known = countries.filter((c) => c.label !== 'Unknown');
+    const shown = known.length > 0;
+
+    return (
+        <Paper sx={{ p: 2, mt: 3 }}>
+            <Typography variant="h6" gutterBottom>
+                Країни
+            </Typography>
+            {!shown ? (
+                <Typography color="text.secondary">
+                    {geo.available
+                        ? 'За цей період немає кліків з визначеною країною.'
+                        : 'Країни поки не визначаються: на цьому сервері не встановлено базу. Виконайте php artisan geoip:update — і нові кліки почнуть розподілятись по країнах.'}
+                </Typography>
+            ) : (
+                <>
+                    <BarChart
+                        height={Math.max(180, countries.length * 34)}
+                        layout="horizontal"
+                        yAxis={[{ scaleType: 'band', data: countries.map((c) => countryLabel(c.label)) }]}
+                        series={[{ data: countries.map((c) => c.clicks), label: 'Кліки' }]}
+                        margin={{ left: 170 }}
+                    />
+                    {geo.attribution && (
+                        <Typography variant="caption" color="text.secondary">
+                            {geo.attribution.includes('DB-IP') ? (
+                                <a href="https://db-ip.com" target="_blank" rel="noreferrer">
+                                    {geo.attribution}
+                                </a>
+                            ) : (
+                                geo.attribution
+                            )}
+                        </Typography>
+                    )}
+                </>
             )}
         </Paper>
     );
@@ -440,6 +487,8 @@ function AnalyticsDashboardPage() {
                     <BreakdownChart title="Пристрої" data={analytics.devices} />
                 </Grid>
             </Grid>
+
+            <CountriesCard countries={analytics.countries} geo={analytics.geo} />
 
             {analytics.top_links && (
                 <Paper sx={{ p: 2, mt: 3 }}>

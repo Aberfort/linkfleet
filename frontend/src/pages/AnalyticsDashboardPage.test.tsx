@@ -22,7 +22,14 @@ vi.mock('@mui/x-charts/LineChart', () => ({
         <div data-testid="line-chart">{series.map((s) => `${s.label}:${s.data.join(',')}`).join(' | ')}</div>
     ),
 }));
-vi.mock('@mui/x-charts/BarChart', () => ({ BarChart: () => <div data-testid="bar-chart" /> }));
+interface BarSeries {
+    data: number[];
+}
+vi.mock('@mui/x-charts/BarChart', () => ({
+    BarChart: ({ yAxis, series }: { yAxis?: { data: string[] }[]; series: BarSeries[] }) => (
+        <div data-testid="bar-chart">{(yAxis?.[0].data ?? []).map((label, i) => `${label}=${series[0].data[i]}`).join('|')}</div>
+    ),
+}));
 
 const noConversions = { total: 0, rate: null, revenue: [], by_event: [] };
 
@@ -39,6 +46,8 @@ const base: Analytics = {
     referrers: [{ label: 'twitter.com', clicks: 9 }],
     browsers: [],
     devices: [],
+    countries: [],
+    geo: { available: true, attribution: 'IP Geolocation by DB-IP' },
     top_links: [
         { id: 1, short_code: 'promo', short_url: 'https://api.example.test/r/promo', target_url: 'https://example.com/promo', clicks_count: 500, period_clicks: 42 },
     ],
@@ -349,5 +358,73 @@ describe('AnalyticsDashboardPage', () => {
         renderPage('/links/9/analytics');
 
         expect(await screen.findByRole('link', { name: 'Налаштувати' })).toHaveAttribute('href', '/sites/8/conversions');
+    });
+
+    it('shows where clicks came from, by country name and flag, with the source credited', async () => {
+        vi.mocked(analyticsApi.fetchAnalytics).mockResolvedValue({
+            ...base,
+            referrers: [],
+            countries: [
+                { label: 'UA', clicks: 30 },
+                { label: 'DE', clicks: 12 },
+                { label: 'Unknown', clicks: 3 },
+            ],
+        });
+        renderPage();
+
+        await screen.findByText('Країни');
+        const charts = screen.getAllByTestId('bar-chart').map((c) => c.textContent ?? '');
+        const countries = charts.find((c) => c.includes('=30'))!;
+
+        expect(countries).toContain('\u{1F1FA}\u{1F1E6}');
+        expect(countries).toContain('\u{1F1E9}\u{1F1EA}');
+        expect(countries).toContain('Невідомо=3');
+        expect(countries).not.toContain('Unknown');
+        expect(screen.getByRole('link', { name: 'IP Geolocation by DB-IP' })).toHaveAttribute('href', 'https://db-ip.com');
+    });
+
+    it('says the database is not installed when there are no countries and the server cannot place new clicks', async () => {
+        vi.mocked(analyticsApi.fetchAnalytics).mockResolvedValue({ ...base, geo: { available: false, attribution: 'IP Geolocation by DB-IP' } });
+        renderPage();
+
+        expect(await screen.findByText(/не встановлено базу/)).toBeInTheDocument();
+        expect(screen.getByText(/geoip:update/)).toBeInTheDocument();
+        // Nothing to credit when nothing from the source is on screen.
+        expect(screen.queryByRole('link', { name: /DB-IP/ })).not.toBeInTheDocument();
+    });
+
+    it('says there is simply nothing yet when the database is installed but no click had a country', async () => {
+        vi.mocked(analyticsApi.fetchAnalytics).mockResolvedValue({ ...base, countries: [{ label: 'Unknown', clicks: 5 }] });
+        renderPage();
+
+        expect(await screen.findByText('За цей період немає кліків з визначеною країною.')).toBeInTheDocument();
+        expect(screen.queryByText(/не встановлено базу/)).not.toBeInTheDocument();
+    });
+
+    it('shows countries recorded earlier even where the server can no longer place new ones', async () => {
+        vi.mocked(analyticsApi.fetchAnalytics).mockResolvedValue({
+            ...base,
+            geo: { available: false, attribution: null },
+            countries: [{ label: 'PL', clicks: 8 }],
+        });
+        renderPage();
+
+        await screen.findByText('Країни');
+
+        expect(screen.getAllByTestId('bar-chart').some((c) => c.textContent?.includes('=8'))).toBe(true);
+        expect(screen.queryByText(/не встановлено базу/)).not.toBeInTheDocument();
+        expect(screen.queryByRole('link', { name: /DB-IP/ })).not.toBeInTheDocument();
+    });
+
+    it('credits a source that is not DB-IP as plain text', async () => {
+        vi.mocked(analyticsApi.fetchAnalytics).mockResolvedValue({
+            ...base,
+            geo: { available: true, attribution: 'Data by Somebody Else' },
+            countries: [{ label: 'US', clicks: 4 }],
+        });
+        renderPage();
+
+        expect(await screen.findByText('Data by Somebody Else')).toBeInTheDocument();
+        expect(screen.queryByRole('link', { name: 'Data by Somebody Else' })).not.toBeInTheDocument();
     });
 });

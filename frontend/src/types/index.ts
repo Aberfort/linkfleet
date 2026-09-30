@@ -203,6 +203,14 @@ export interface Analytics {
     referrers: Breakdown[];
     browsers: Breakdown[];
     devices: Breakdown[];
+    /** ISO codes as `label`, plus "Unknown". */
+    countries: Breakdown[];
+    geo: {
+        /** This server has a country database, so new clicks are placed. */
+        available: boolean;
+        /** Credit the data source asks to be shown, if any. */
+        attribution: string | null;
+    };
     top_links?: TopLink[];
     site_id: number;
     /** Whether the site appends the click token to destinations at all. */
