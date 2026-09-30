@@ -59,6 +59,7 @@ Errors are JSON with a `message`. Validation failures add an `errors` object key
 |---|---|
 | `401` | Missing, invalid or revoked token |
 | `403` | Authenticated, but not allowed — your role, a read-only key, or a key pinned elsewhere |
+| `402` | The workspace's plan is full — see [Plans and limits](#plans-and-limits). Hosted deployments only |
 | `404` | No such thing — or, on member routes, someone who is not in that workspace |
 | `422` | Validation failed |
 | `429` | Rate limited — wait `Retry-After` seconds |
@@ -66,6 +67,30 @@ Errors are JSON with a `message`. Validation failures add an `errors` object key
 ## Rate limits
 
 Every response carries `X-RateLimit-Limit` and `X-RateLimit-Remaining`. Over the limit you get `429` and a `Retry-After` header (seconds). Each API key has its own allowance, so one noisy integration cannot starve another or the dashboard. Self-hosting? Change them with `API_RATE_LIMIT` and `API_KEY_RATE_LIMIT`.
+
+## Plans and limits
+
+Only on a **hosted** deployment (`GET /api/config` says `"billing": { "enabled": true }`). A self-hosted install has no plans and no limits, and none of this exists there: the routes below answer `404`.
+
+A plan puts a ceiling on three things a workspace accumulates — **links**, **custom domains** and **members** (people, counting the owner). Every feature is on every plan; a plan sells room, not functionality. Limits are per workspace and hold for API keys exactly as for the dashboard.
+
+When something would go past its ceiling the request is refused with `402`:
+
+```json
+{
+  "message": "Ліміт плану «Free» вичерпано — посилань: 25. Перейдіть на вищий план, щоб додати більше.",
+  "code": "plan_limit",
+  "resource": "links",
+  "limit": 25,
+  "usage": 25,
+  "plan": "free",
+  "workspace_id": 4
+}
+```
+
+`resource` is `links`, `domains` or `members`; check `code` rather than the text. A CSV import is not refused as a whole: it takes rows until the plan is full, then stops, and answers `200` with `"plan_limit": true` and the reason as its last entry in `skipped`.
+
+Limits only ever stop something being **added**. Redirects, reading, editing, analytics, webhooks and deleting are never affected, so a workspace that has slipped over its plan (by downgrading, say) keeps everything it has. It is just unable to add more until it is back under, or moves up.
 
 ## Endpoints
 
@@ -440,3 +465,21 @@ Managed from a signed-in session only — the dashboard's **API-ключі** pag
 | `DELETE /api/api-keys/{id}` | Revoke |
 
 You can have up to 25 keys.
+
+## Billing (hosted edition)
+
+Payments are handled by [Paddle](https://www.paddle.com), which is the merchant of record: it charges the card, collects and pays the VAT, and sends the invoice. LinkFleet never sees card details. All of this is `404` on a self-hosted install.
+
+A subscription belongs to the **person who pays** (one Paddle customer per user) and is filed under the workspace it is for, so one person can pay for several client workspaces. Only that person can change, cancel or resume it; another owner of the workspace can see it, not end it.
+
+| | |
+|---|---|
+| `GET /api/plans` | Public. `{ "plans": [{ "key", "name", "limits": { "links", "domains", "members" }, "prices": { "monthly"?, "yearly"? } }], "checkout_available": bool }`. A `null` limit is unlimited; `prices` holds Paddle price ids and is empty for Free. Amounts are not here — Paddle.js prices them for the visitor's own currency |
+| `GET /api/workspaces/{workspace}/billing` | Any member. The plan, `source` (`free`, `subscription` or `granted`), `limits`, `usage`, `over_limit` (resources used beyond the plan), `can_manage`, and the `subscription` if there is one (`status`, `plan`, `interval`, `ends_at`, `on_grace_period`, `past_due`, `is_payer`, and `payer_name` for owners). Readable with a key |
+| `POST /api/workspaces/{workspace}/billing/checkout` | Owner. `{ "price_id" }` → `{ "checkout": {…} }`, the options to hand to `Paddle.Checkout.open`. The customer and the workspace are fixed by the server. `409` if the workspace already has a subscription |
+| `POST /api/workspaces/{workspace}/billing/change` | The payer. `{ "price_id" }` moves the subscription to another plan (Paddle prorates). `409` while a payment is failing or if it is already that plan |
+| `POST /api/workspaces/{workspace}/billing/cancel` | The payer. Ends it at the close of the period already paid for, not today |
+| `POST /api/workspaces/{workspace}/billing/resume` | The payer. Takes back a cancellation that has not taken effect yet |
+| `GET /api/workspaces/{workspace}/billing/payment-method` | The payer. `{ "url" }` — Paddle's hosted page for changing the card |
+
+Everything that spends or ends money needs a signed-in **session**, never an API key (`403`), and is limited to 10 a minute. A `502` means Paddle refused or could not be reached; nothing was changed here. `503` means the server has not been given its Paddle keys yet. A workspace that is still being billed cannot be deleted (`409`) — cancel first, or the subscription would go on charging for something that no longer exists.
