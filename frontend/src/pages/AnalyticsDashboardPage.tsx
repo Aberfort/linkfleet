@@ -14,9 +14,12 @@ import {
     TableCell,
     Breadcrumbs,
     Link,
+    Alert,
     Button,
     Chip,
     FormControlLabel,
+    Menu,
+    MenuItem,
     Stack,
     Switch,
     TextField,
@@ -27,12 +30,13 @@ import {
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import { LineChart } from '@mui/x-charts/LineChart';
 import { BarChart } from '@mui/x-charts/BarChart';
-import { fetchAnalytics, exportAnalytics, type AnalyticsTarget } from '../api/analytics';
+import { fetchAnalytics, exportAnalytics, type AnalyticsTarget, type ExportType } from '../api/analytics';
 import { errorMessage, validationErrors } from '../api/errors';
 import { shortLabel } from '../utils/shortUrl';
 import { delta, type Delta } from '../utils/delta';
 import { saveBlob } from '../utils/download';
-import type { Analytics, AnalyticsQuery } from '../types';
+import { formatMoney, formatRate } from '../utils/format';
+import type { Analytics, AnalyticsQuery, Money } from '../types';
 
 const PRESETS = [
     { days: 7, label: '7 днів' },
@@ -68,6 +72,30 @@ function DeltaChip({ value }: { value: Delta }) {
     const color = value.direction === 'up' || value.direction === 'new' ? 'success' : value.direction === 'down' ? 'error' : 'default';
 
     return <Chip size="small" color={color} variant="outlined" label={value.label} />;
+}
+
+/** Every currency of `list`, each with its change against the same currency a period ago. */
+function MoneyList({ list, before }: { list: Money[]; before?: Money[] }) {
+    if (list.length === 0) {
+        return (
+            <Typography variant="h4" component="div" color="text.secondary">
+                —
+            </Typography>
+        );
+    }
+
+    return (
+        <Stack gap={0.5}>
+            {list.map((money) => (
+                <Stack key={money.currency} direction="row" alignItems="baseline" gap={1.5}>
+                    <Typography variant="h5" component="div">
+                        {formatMoney(money)}
+                    </Typography>
+                    {before && <DeltaChip value={delta(money.amount, before.find((m) => m.currency === money.currency)?.amount ?? 0)} />}
+                </Stack>
+            ))}
+        </Stack>
+    );
 }
 
 function Kpi({ label, value, change, hint }: { label: string; value: number; change?: Delta; hint?: string }) {
@@ -108,6 +136,7 @@ function AnalyticsDashboardPage() {
     const [analytics, setAnalytics] = useState<Analytics | null>(null);
     const [loading, setLoading] = useState(true);
     const [exporting, setExporting] = useState(false);
+    const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
     const [rangeError, setRangeError] = useState<string | null>(null);
     // Edited freely, applied only when both are complete and valid.
     const [customFrom, setCustomFrom] = useState('');
@@ -178,10 +207,11 @@ function AnalyticsDashboardPage() {
         }
     };
 
-    const handleExport = async () => {
+    const handleExport = async (type: ExportType) => {
+        setMenuAnchor(null);
         setExporting(true);
         try {
-            const { blob, filename } = await exportAnalytics(target, query);
+            const { blob, filename } = await exportAnalytics(target, query, type);
             saveBlob(blob, filename);
         } catch (error) {
             toast.error(errorMessage(error, 'Не вдалося вивантажити дані.'));
@@ -202,6 +232,8 @@ function AnalyticsDashboardPage() {
     const clicksChange = previous ? delta(analytics.totals.clicks, previous.totals.clicks) : undefined;
     const visitorsChange = previous ? delta(analytics.totals.visitors, previous.totals.visitors) : undefined;
     const labels = analytics.timeseries.map((p) => p.date.slice(5));
+    // Worth the room when it is set up, or when there is history to show.
+    const showConversions = analytics.conversion_tracking || analytics.conversions.total > 0;
 
     return (
         <Container maxWidth="lg" sx={{ mt: 4 }}>
@@ -263,9 +295,19 @@ function AnalyticsDashboardPage() {
 
                     <Box sx={{ flexGrow: 1 }} />
 
-                    <Button variant="outlined" startIcon={<FileDownloadIcon />} onClick={handleExport} disabled={exporting}>
+                    <Button
+                        variant="outlined"
+                        startIcon={<FileDownloadIcon />}
+                        onClick={(e) => setMenuAnchor(e.currentTarget)}
+                        disabled={exporting}
+                        aria-haspopup="menu"
+                    >
                         {exporting ? 'Готую...' : 'Експорт CSV'}
                     </Button>
+                    <Menu anchorEl={menuAnchor} open={menuAnchor !== null} onClose={() => setMenuAnchor(null)}>
+                        <MenuItem onClick={() => handleExport('clicks')}>Кліки</MenuItem>
+                        <MenuItem onClick={() => handleExport('conversions')}>Конверсії</MenuItem>
+                    </Menu>
                 </Stack>
                 {rangeError && (
                     <Typography color="error" variant="body2" sx={{ mt: 1 }}>
@@ -291,6 +333,85 @@ function AnalyticsDashboardPage() {
                     />
                 </Grid>
             </Grid>
+
+            {showConversions ? (
+                <>
+                    <Grid container spacing={3} sx={{ mb: 3 }}>
+                        <Grid item xs={12} sm={4}>
+                            <Kpi
+                                label="Конверсії"
+                                value={analytics.conversions.total}
+                                change={previous ? delta(analytics.conversions.total, previous.conversions.total) : undefined}
+                            />
+                        </Grid>
+                        <Grid item xs={12} sm={4}>
+                            <Paper sx={{ p: 2, height: '100%' }}>
+                                <Tooltip title="Частка кліків за період, після яких була конверсія. Кілька покупок з одного кліку рахуються один раз.">
+                                    <Typography variant="body2" color="text.secondary">
+                                        Коефіцієнт конверсії
+                                    </Typography>
+                                </Tooltip>
+                                <Stack direction="row" alignItems="baseline" gap={1.5}>
+                                    <Typography variant="h4" component="div">
+                                        {formatRate(analytics.conversions.rate)}
+                                    </Typography>
+                                    {previous && (
+                                        <Typography variant="caption" color="text.secondary">
+                                            було {formatRate(previous.conversions.rate)}
+                                        </Typography>
+                                    )}
+                                </Stack>
+                            </Paper>
+                        </Grid>
+                        <Grid item xs={12} sm={4}>
+                            <Paper sx={{ p: 2, height: '100%' }} data-testid="revenue-kpi">
+                                <Typography variant="body2" color="text.secondary">
+                                    Дохід
+                                </Typography>
+                                <MoneyList list={analytics.conversions.revenue} before={previous?.conversions.revenue} />
+                            </Paper>
+                        </Grid>
+                    </Grid>
+
+                    {analytics.conversions.by_event.length > 0 && (
+                        <Paper sx={{ p: 2, mb: 3 }}>
+                            <Typography variant="h6" gutterBottom>
+                                Конверсії за подіями
+                            </Typography>
+                            <Table size="small">
+                                <TableHead>
+                                    <TableRow>
+                                        <TableCell>Подія</TableCell>
+                                        <TableCell align="right">Конверсій</TableCell>
+                                        <TableCell align="right">Дохід</TableCell>
+                                    </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                    {analytics.conversions.by_event.map((row) => (
+                                        <TableRow key={row.event}>
+                                            <TableCell>
+                                                <code>{row.event}</code>
+                                            </TableCell>
+                                            <TableCell align="right">{row.conversions}</TableCell>
+                                            <TableCell align="right">
+                                                {row.revenue.length ? row.revenue.map(formatMoney).join(' · ') : '—'}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </Paper>
+                    )}
+                </>
+            ) : (
+                <Alert severity="info" sx={{ mb: 3 }}>
+                    Конверсії поки не відстежуються — тобто видно, скільки людей перейшло, але не скільки з них купило чи
+                    зареєструвалось.{' '}
+                    <Link component={RouterLink} to={`/sites/${analytics.site_id}/conversions`}>
+                        Налаштувати
+                    </Link>
+                </Alert>
+            )}
 
             <Paper sx={{ p: 2, mb: 3 }}>
                 <Typography variant="h6" gutterBottom>
@@ -334,6 +455,8 @@ function AnalyticsDashboardPage() {
                                     <TableCell>Коротке посилання</TableCell>
                                     <TableCell>Ціль</TableCell>
                                     <TableCell align="right">За період</TableCell>
+                                    {showConversions && <TableCell align="right">Конверсій</TableCell>}
+                                    {showConversions && <TableCell align="right">Дохід</TableCell>}
                                     <TableCell align="right">Всього</TableCell>
                                 </TableRow>
                             </TableHead>
@@ -354,6 +477,12 @@ function AnalyticsDashboardPage() {
                                             {link.target_url}
                                         </TableCell>
                                         <TableCell align="right">{link.period_clicks}</TableCell>
+                                        {showConversions && <TableCell align="right">{link.period_conversions ?? 0}</TableCell>}
+                                        {showConversions && (
+                                            <TableCell align="right">
+                                                {link.period_revenue?.length ? link.period_revenue.map(formatMoney).join(' · ') : '—'}
+                                            </TableCell>
+                                        )}
                                         <TableCell align="right">{link.clicks_count}</TableCell>
                                     </TableRow>
                                 ))}

@@ -26,7 +26,12 @@ export interface Member {
     joined_at: string;
 }
 
-export type WebhookEventName = 'link.created' | 'link.updated' | 'link.deleted' | 'link.clicked';
+export type WebhookEventName =
+    | 'link.created'
+    | 'link.updated'
+    | 'link.deleted'
+    | 'link.clicked'
+    | 'conversion.created';
 
 export interface WebhookDelivery {
     id: number;
@@ -82,6 +87,8 @@ export interface Site {
     name: string;
     domain: string | null;
     description: string | null;
+    /** Redirects append ?lf_click=... to the destination so conversions can be traced back. */
+    conversion_tracking: boolean;
     links_count?: number;
     created_at: string;
     updated_at: string;
@@ -141,6 +148,40 @@ export interface TopLink {
     clicks_count: number;
     /** Within the selected range - what the table is ranked by. */
     period_clicks: number;
+    /** Present when the analytics request included conversions (site reports). */
+    period_conversions?: number;
+    period_revenue?: Money[];
+}
+
+/** An amount in one currency. Amounts are never added across currencies. */
+export interface Money {
+    currency: string;
+    amount: number;
+}
+
+export interface ConversionSummary {
+    total: number;
+    /** Share of the range's clicks followed by a conversion, 0..1; null when there were no clicks. */
+    rate: number | null;
+    revenue: Money[];
+}
+
+export interface EventBreakdown {
+    event: string;
+    conversions: number;
+    revenue: Money[];
+}
+
+export interface RecentConversion {
+    id: number;
+    event: string;
+    value: string | null;
+    currency: string | null;
+    external_id: string | null;
+    /** 'server' for an authenticated report, 'pixel' for one from a browser (which anyone with the click token can send). */
+    source: 'server' | 'pixel';
+    link: string;
+    created_at: string;
 }
 
 export interface DateRange {
@@ -163,11 +204,16 @@ export interface Analytics {
     browsers: Breakdown[];
     devices: Breakdown[];
     top_links?: TopLink[];
+    site_id: number;
+    /** Whether the site appends the click token to destinations at all. */
+    conversion_tracking: boolean;
+    conversions: ConversionSummary & { by_event: EventBreakdown[] };
     /** Present only when the request asked to compare. */
     previous?: {
         range: DateRange;
         totals: Totals;
         timeseries: TimeseriesPoint[];
+        conversions: ConversionSummary;
     };
 }
 

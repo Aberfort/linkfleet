@@ -21,6 +21,7 @@ const site: Site = {
     name: 'My Site',
     domain: 'example.com',
     description: null,
+    conversion_tracking: false,
     links_count: 3,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
@@ -167,5 +168,48 @@ describe('SitesPage', () => {
 
         expect(screen.getByTestId('EditIcon').closest('button')).toBeDisabled();
         expect(screen.getByTestId('DeleteIcon').closest('button')).toBeDisabled();
+    });
+
+    it('turns conversion tracking on when creating a site', async () => {
+        vi.mocked(sitesApi.listSites).mockResolvedValue([]);
+        vi.mocked(sitesApi.createSite).mockResolvedValue({ ...site, name: 'Tracked' });
+
+        renderPage();
+        await screen.findByText('Сайтів поки немає.');
+        await userEvent.click(screen.getByRole('button', { name: 'Додати сайт' }));
+        await userEvent.type(screen.getByLabelText('Назва'), 'Tracked');
+        await userEvent.click(screen.getByRole('checkbox', { name: /Відстежувати конверсії/ }));
+        await userEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
+
+        await waitFor(() =>
+            expect(sitesApi.createSite).toHaveBeenCalledWith(expect.objectContaining({ name: 'Tracked', conversion_tracking: true }))
+        );
+    });
+
+    it('starts with tracking off and shows the current setting when editing', async () => {
+        vi.mocked(sitesApi.listSites).mockResolvedValue([{ ...site, conversion_tracking: true }]);
+        vi.mocked(sitesApi.updateSite).mockResolvedValue({ ...site, conversion_tracking: false });
+
+        renderPage();
+        await screen.findByText('My Site');
+        await userEvent.click(screen.getByTestId('EditIcon').closest('button')!);
+
+        const toggle = screen.getByRole('checkbox', { name: /Відстежувати конверсії/ });
+        expect(toggle).toBeChecked();
+        await userEvent.click(toggle);
+        await userEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
+
+        await waitFor(() =>
+            expect(sitesApi.updateSite).toHaveBeenCalledWith(1, expect.objectContaining({ conversion_tracking: false }))
+        );
+    });
+
+    it('links each site to its conversions page', async () => {
+        vi.mocked(sitesApi.listSites).mockResolvedValue([site]);
+
+        renderPage();
+        await screen.findByText('My Site');
+
+        expect(screen.getByRole('link', { name: 'Конверсії' })).toHaveAttribute('href', '/sites/1/conversions');
     });
 });

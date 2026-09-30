@@ -278,4 +278,23 @@ describe('WebhooksPage', () => {
         expect(screen.getByRole('button', { name: 'Журнал' })).toBeEnabled();
         expect(screen.getByText(/лише для читання/i)).toBeInTheDocument();
     });
+
+    it('can subscribe to new conversions', async () => {
+        vi.mocked(hooksApi.listWebhooks).mockResolvedValue([]);
+        vi.mocked(hooksApi.createWebhook).mockResolvedValue({ ...hook, secret: 'whsec_x' });
+
+        renderPage();
+        await screen.findByText('Вебхуків поки немає.');
+        await userEvent.click(screen.getByRole('button', { name: 'Додати вебхук' }));
+        await userEvent.type(screen.getByLabelText('Адреса'), 'https://hooks.example.com/in');
+        await userEvent.click(screen.getByLabelText(/Нова конверсія/));
+        await userEvent.click(screen.getByRole('button', { name: 'Зберегти' }));
+
+        await waitFor(() =>
+            expect(hooksApi.createWebhook).toHaveBeenCalledWith(1, {
+                url: 'https://hooks.example.com/in',
+                events: ['link.created', 'link.clicked', 'conversion.created'],
+            })
+        );
+    });
 });

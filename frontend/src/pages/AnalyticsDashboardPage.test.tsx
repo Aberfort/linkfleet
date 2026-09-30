@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import AnalyticsDashboardPage from './AnalyticsDashboardPage';
@@ -24,7 +24,12 @@ vi.mock('@mui/x-charts/LineChart', () => ({
 }));
 vi.mock('@mui/x-charts/BarChart', () => ({ BarChart: () => <div data-testid="bar-chart" /> }));
 
+const noConversions = { total: 0, rate: null, revenue: [], by_event: [] };
+
 const base: Analytics = {
+    site_id: 3,
+    conversion_tracking: false,
+    conversions: noConversions,
     range: { from: '2026-09-01', to: '2026-09-30', days: 30 },
     totals: { clicks: 120, visitors: 45 },
     timeseries: [
@@ -48,7 +53,37 @@ const compared: Analytics = {
             { date: '2026-08-30', clicks: 3 },
             { date: '2026-08-31', clicks: 4 },
         ],
+        conversions: { total: 0, rate: null, revenue: [] },
     },
+};
+
+const tracked: Analytics = {
+    ...base,
+    conversion_tracking: true,
+    conversions: {
+        total: 12,
+        rate: 0.075,
+        revenue: [
+            { currency: 'USD', amount: 600 },
+            { currency: 'EUR', amount: 90.5 },
+        ],
+        by_event: [
+            { event: 'purchase', conversions: 8, revenue: [{ currency: 'USD', amount: 600 }] },
+            { event: 'signup', conversions: 4, revenue: [] },
+        ],
+    },
+    top_links: [
+        {
+            id: 1,
+            short_code: 'promo',
+            short_url: 'https://api.example.test/r/promo',
+            target_url: 'https://example.com/promo',
+            clicks_count: 500,
+            period_clicks: 42,
+            period_conversions: 5,
+            period_revenue: [{ currency: 'USD', amount: 250 }],
+        },
+    ],
 };
 
 function Location() {
@@ -205,13 +240,15 @@ describe('AnalyticsDashboardPage', () => {
         await screen.findByText('120');
 
         await userEvent.click(screen.getByRole('button', { name: 'Експорт CSV' }));
+        await userEvent.click(await screen.findByRole('menuitem', { name: 'Кліки' }));
 
         await waitFor(() =>
             expect(download.saveBlob).toHaveBeenCalledWith(blob, 'linkfleet-shop-2026-09-01_2026-09-30.csv')
         );
         expect(analyticsApi.exportAnalytics).toHaveBeenCalledWith(
             { kind: 'site', id: 3 },
-            { from: '2026-09-01', to: '2026-09-30', compare: true }
+            { from: '2026-09-01', to: '2026-09-30', compare: true },
+            'clicks'
         );
     });
 
@@ -221,9 +258,96 @@ describe('AnalyticsDashboardPage', () => {
         await screen.findByText('120');
 
         await userEvent.click(screen.getByRole('button', { name: 'Експорт CSV' }));
+        await userEvent.click(await screen.findByRole('menuitem', { name: 'Кліки' }));
 
         await waitFor(() => expect(analyticsApi.exportAnalytics).toHaveBeenCalled());
         expect(download.saveBlob).not.toHaveBeenCalled();
         expect(screen.getByRole('button', { name: 'Експорт CSV' })).toBeEnabled();
+    });
+
+    it('exports conversions as a separate file', async () => {
+        vi.mocked(analyticsApi.exportAnalytics).mockResolvedValue({ blob: new Blob(['x']), filename: 'c.csv' });
+        renderPage();
+        await screen.findByText('120');
+
+        await userEvent.click(screen.getByRole('button', { name: 'Експорт CSV' }));
+        await userEvent.click(await screen.findByRole('menuitem', { name: 'Конверсії' }));
+
+        await waitFor(() =>
+            expect(analyticsApi.exportAnalytics).toHaveBeenCalledWith({ kind: 'site', id: 3 }, { compare: false }, 'conversions')
+        );
+    });
+
+    it('invites setting up conversions when there are none and tracking is off', async () => {
+        renderPage();
+
+        expect(await screen.findByText(/Конверсії поки не відстежуються/)).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: 'Налаштувати' })).toHaveAttribute('href', '/sites/3/conversions');
+        expect(screen.queryByText('Коефіцієнт конверсії')).not.toBeInTheDocument();
+    });
+
+    it('shows conversions, the rate and revenue in each currency once tracking is on', async () => {
+        vi.mocked(analyticsApi.fetchAnalytics).mockResolvedValue(tracked);
+        renderPage();
+
+        expect(await screen.findByText('Коефіцієнт конверсії')).toBeInTheDocument();
+        expect(screen.getByText('12')).toBeInTheDocument();
+        expect(screen.getByText(/7,5\s?%/)).toBeInTheDocument();
+        // Two currencies are two lines, never one added-up figure.
+        const revenue = screen.getByTestId('revenue-kpi');
+        expect(within(revenue).getByText(/600/)).toBeInTheDocument();
+        expect(within(revenue).getByText(/90,5/)).toBeInTheDocument();
+        expect(within(revenue).queryByText(/690/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/Конверсії поки не відстежуються/)).not.toBeInTheDocument();
+    });
+
+    it('breaks conversions down by event and shows them next to each top link', async () => {
+        vi.mocked(analyticsApi.fetchAnalytics).mockResolvedValue(tracked);
+        renderPage();
+
+        await screen.findByText('Конверсії за подіями');
+
+        expect(screen.getByText('purchase')).toBeInTheDocument();
+        expect(screen.getByText('signup')).toBeInTheDocument();
+        // "Конверсій" heads both the by-event table and the top-links one.
+        expect(screen.getAllByRole('columnheader', { name: 'Конверсій' })).toHaveLength(2);
+        expect(screen.getByText('5')).toBeInTheDocument();
+    });
+
+    it('keeps showing conversions for a site that switched tracking off but has history', async () => {
+        vi.mocked(analyticsApi.fetchAnalytics).mockResolvedValue({ ...tracked, conversion_tracking: false });
+        renderPage();
+
+        expect(await screen.findByText('Коефіцієнт конверсії')).toBeInTheDocument();
+    });
+
+    it('sets conversions against the period before, per currency', async () => {
+        vi.mocked(analyticsApi.fetchAnalytics).mockResolvedValue({
+            ...tracked,
+            previous: {
+                ...compared.previous!,
+                conversions: {
+                    total: 6,
+                    rate: 0.05,
+                    revenue: [{ currency: 'USD', amount: 300 }],
+                },
+            },
+        });
+        renderPage('/sites/3/analytics?compare=previous');
+
+        await screen.findByText('Коефіцієнт конверсії');
+
+        // 6 -> 12 conversions is +100%; USD 300 -> 600 is +100%.
+        expect(screen.getAllByText('+100%').length).toBeGreaterThanOrEqual(2);
+        // EUR did not exist before: it is new, not an infinite percentage.
+        expect(screen.getByText('нове')).toBeInTheDocument();
+        expect(screen.getByText(/було\s+5\s?%/)).toBeInTheDocument();
+    });
+
+    it('a single link report points the setup prompt at its site', async () => {
+        vi.mocked(analyticsApi.fetchAnalytics).mockResolvedValue({ ...base, site_id: 8 });
+        renderPage('/links/9/analytics');
+
+        expect(await screen.findByRole('link', { name: 'Налаштувати' })).toHaveAttribute('href', '/sites/8/conversions');
     });
 });

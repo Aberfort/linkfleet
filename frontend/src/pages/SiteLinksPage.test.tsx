@@ -21,6 +21,7 @@ const site: Site = {
     name: 'My Site',
     domain: 'example.com',
     description: null,
+    conversion_tracking: false,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
 };

@@ -7,6 +7,7 @@ export interface SitePayload {
     name: string;
     domain?: string;
     description?: string;
+    conversion_tracking?: boolean;
 }
 
 export const listSites = () => api.get<Site[]>('/api/sites').then((r) => r.data);

@@ -24,12 +24,15 @@ import {
     DialogActions,
     TextField,
     MenuItem,
+    FormControlLabel,
+    Switch,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import LinkIcon from '@mui/icons-material/Link';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import PublicIcon from '@mui/icons-material/Public';
+import PaidIcon from '@mui/icons-material/Paid';
 import { useAuth } from '../contexts/useAuth';
 import { listSites, createSite, updateSite, deleteSite } from '../api/sites';
 import { listWorkspaces } from '../api/workspaces';
@@ -42,9 +45,10 @@ interface FormValues {
     name: string;
     domain: string;
     description: string;
+    conversion_tracking: boolean;
 }
 
-const emptyValues: FormValues = { workspace_id: '', name: '', domain: '', description: '' };
+const emptyValues: FormValues = { workspace_id: '', name: '', domain: '', description: '', conversion_tracking: false };
 
 const validationSchema = Yup.object({
     workspace_id: Yup.number().required('Оберіть workspace'),
@@ -186,6 +190,11 @@ function SitesPage() {
                                                 <BarChartIcon fontSize="small" />
                                             </IconButton>
                                         </Tooltip>
+                                        <Tooltip title="Конверсії">
+                                            <IconButton component={RouterLink} to={`/sites/${site.id}/conversions`} aria-label="Конверсії">
+                                                <PaidIcon fontSize="small" />
+                                            </IconButton>
+                                        </Tooltip>
                                         <Tooltip title="Власний домен">
                                             <IconButton component={RouterLink} to={`/sites/${site.id}/domain`}>
                                                 <PublicIcon fontSize="small" />
@@ -219,6 +228,7 @@ function SitesPage() {
                                   name: editingSite.name,
                                   domain: editingSite.domain ?? '',
                                   description: editingSite.description ?? '',
+                                  conversion_tracking: editingSite.conversion_tracking,
                               }
                             : { ...emptyValues, workspace_id: writable[0]?.id ?? '' }
                     }
@@ -281,6 +291,25 @@ function SitesPage() {
                                     onChange={handleChange}
                                     error={touched.description && Boolean(errors.description)}
                                     helperText={touched.description && errors.description}
+                                />
+                                <FormControlLabel
+                                    sx={{ mt: 1, alignItems: 'flex-start' }}
+                                    control={
+                                        <Switch
+                                            name="conversion_tracking"
+                                            checked={values.conversion_tracking}
+                                            onChange={handleChange}
+                                        />
+                                    }
+                                    label={
+                                        <span>
+                                            Відстежувати конверсії
+                                            <Typography variant="caption" color="text.secondary" component="span" sx={{ display: 'block' }}>
+                                                Перехід дописуватиме до цільового URL параметр <code>lf_click</code>, щоб ваш сайт міг
+                                                повідомити про реєстрацію чи покупку. Вимкнено — посилання відкриваються як раніше.
+                                            </Typography>
+                                        </span>
+                                    }
                                 />
                             </DialogContent>
                             <DialogActions>

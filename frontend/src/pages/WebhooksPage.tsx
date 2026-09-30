@@ -60,6 +60,7 @@ const EVENTS: { value: WebhookEventName; label: string; hint: string }[] = [
     { value: 'link.updated', label: 'Посилання змінено', hint: 'Адреса, пароль, термін дії, вмикання й вимикання' },
     { value: 'link.deleted', label: 'Посилання видалено', hint: 'Не спрацьовує, коли видаляється весь сайт' },
     { value: 'link.clicked', label: 'Клік по посиланню', hint: 'Може бути багато — кожен клік окрема подія' },
+    { value: 'conversion.created', label: 'Нова конверсія', hint: 'Реєстрація чи покупка, про яку повідомив ваш сайт' },
 ];
 
 const eventLabel = (event: string): string =>

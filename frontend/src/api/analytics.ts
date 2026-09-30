@@ -26,9 +26,11 @@ export const linkAnalytics = (linkId: number, query: AnalyticsQuery = {}) =>
  * The export is a file behind a bearer token, so it cannot be a plain link:
  * fetch it with the token, then hand the bytes to the browser to save.
  */
-export const exportAnalytics = async (target: AnalyticsTarget, query: AnalyticsQuery = {}) => {
+export type ExportType = 'clicks' | 'conversions';
+
+export const exportAnalytics = async (target: AnalyticsTarget, query: AnalyticsQuery = {}, type: ExportType = 'clicks') => {
     const response = await api.get<Blob>(`${path(target)}/export`, {
-        params: toParams({ ...query, compare: false }),
+        params: { ...toParams({ ...query, compare: false }), ...(type === 'conversions' ? { type } : {}) },
         responseType: 'blob',
     });
     const disposition = String(response.headers['content-disposition'] ?? '');
