@@ -137,15 +137,46 @@ export interface TopLink {
     short_code: string;
     short_url: string;
     target_url: string;
+    /** All-time. */
     clicks_count: number;
+    /** Within the selected range - what the table is ranked by. */
+    period_clicks: number;
+}
+
+export interface DateRange {
+    from: string;
+    to: string;
+    days: number;
+}
+
+export interface Totals {
+    clicks: number;
+    /** Distinct hashed /24 networks, not people - see the tooltip on the dashboard. */
+    visitors: number;
 }
 
 export interface Analytics {
+    range: DateRange;
+    totals: Totals;
     timeseries: TimeseriesPoint[];
     referrers: Breakdown[];
     browsers: Breakdown[];
     devices: Breakdown[];
     top_links?: TopLink[];
+    /** Present only when the request asked to compare. */
+    previous?: {
+        range: DateRange;
+        totals: Totals;
+        timeseries: TimeseriesPoint[];
+    };
+}
+
+/** What the dashboard asks for: a preset of N days, or explicit dates. */
+export interface AnalyticsQuery {
+    days?: number;
+    from?: string;
+    to?: string;
+    compare?: boolean;
 }
 
 export interface AppConfig {

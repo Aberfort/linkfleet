@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { useParams, Link as RouterLink } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useParams, useSearchParams, Link as RouterLink } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import {
     Container,
@@ -14,13 +14,34 @@ import {
     TableCell,
     Breadcrumbs,
     Link,
+    Button,
+    Chip,
+    FormControlLabel,
+    Stack,
+    Switch,
+    TextField,
+    ToggleButton,
+    ToggleButtonGroup,
+    Tooltip,
 } from '@mui/material';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import { LineChart } from '@mui/x-charts/LineChart';
 import { BarChart } from '@mui/x-charts/BarChart';
-import { siteAnalytics, linkAnalytics } from '../api/analytics';
-import { errorMessage } from '../api/errors';
+import { fetchAnalytics, exportAnalytics, type AnalyticsTarget } from '../api/analytics';
+import { errorMessage, validationErrors } from '../api/errors';
 import { shortLabel } from '../utils/shortUrl';
-import type { Analytics } from '../types';
+import { delta, type Delta } from '../utils/delta';
+import { saveBlob } from '../utils/download';
+import type { Analytics, AnalyticsQuery } from '../types';
+
+const PRESETS = [
+    { days: 7, label: '7 днів' },
+    { days: 30, label: '30 днів' },
+    { days: 90, label: '90 днів' },
+    { days: 365, label: 'Рік' },
+] as const;
+
+const DEFAULT_DAYS = 30;
 
 function BreakdownChart({ title, data }: { title: string; data: Analytics['referrers'] }) {
     return (
@@ -43,36 +64,144 @@ function BreakdownChart({ title, data }: { title: string; data: Analytics['refer
     );
 }
 
+function DeltaChip({ value }: { value: Delta }) {
+    const color = value.direction === 'up' || value.direction === 'new' ? 'success' : value.direction === 'down' ? 'error' : 'default';
+
+    return <Chip size="small" color={color} variant="outlined" label={value.label} />;
+}
+
+function Kpi({ label, value, change, hint }: { label: string; value: number; change?: Delta; hint?: string }) {
+    const title = (
+        <Typography variant="body2" color="text.secondary">
+            {label}
+        </Typography>
+    );
+
+    return (
+        <Paper sx={{ p: 2 }}>
+            {hint ? <Tooltip title={hint}>{title}</Tooltip> : title}
+            <Stack direction="row" alignItems="baseline" gap={1.5}>
+                <Typography variant="h4" component="div">
+                    {value.toLocaleString('uk-UA')}
+                </Typography>
+                {change && <DeltaChip value={change} />}
+            </Stack>
+        </Paper>
+    );
+}
+
+/** What the URL says the user asked for. Nothing in it means the server's default. */
+function queryFrom(params: URLSearchParams): AnalyticsQuery {
+    const days = Number(params.get('days'));
+
+    return {
+        ...(days > 0 ? { days } : {}),
+        ...(params.get('from') ? { from: params.get('from') as string } : {}),
+        ...(params.get('to') ? { to: params.get('to') as string } : {}),
+        compare: params.get('compare') === 'previous',
+    };
+}
+
 function AnalyticsDashboardPage() {
     const { siteId, linkId } = useParams<{ siteId?: string; linkId?: string }>();
+    const [params, setParams] = useSearchParams();
     const [analytics, setAnalytics] = useState<Analytics | null>(null);
     const [loading, setLoading] = useState(true);
+    const [exporting, setExporting] = useState(false);
+    const [rangeError, setRangeError] = useState<string | null>(null);
+    // Edited freely, applied only when both are complete and valid.
+    const [customFrom, setCustomFrom] = useState('');
+    const [customTo, setCustomTo] = useState('');
 
-    const fetchAnalytics = useCallback(async () => {
+    const target = useMemo<AnalyticsTarget>(
+        () => (siteId ? { kind: 'site', id: Number(siteId) } : { kind: 'link', id: Number(linkId) }),
+        [siteId, linkId]
+    );
+    const query = queryFrom(params);
+    const isCustom = Boolean(query.from || query.to);
+    const activeDays = isCustom ? null : (query.days ?? DEFAULT_DAYS);
+    const search = params.toString();
+
+    const load = useCallback(async () => {
         setLoading(true);
         try {
-            const data = siteId ? await siteAnalytics(Number(siteId)) : await linkAnalytics(Number(linkId));
+            const data = await fetchAnalytics(target, queryFrom(new URLSearchParams(search)));
             setAnalytics(data);
+            setRangeError(null);
         } catch (error) {
-            toast.error(errorMessage(error, 'Помилка при завантаженні аналітики.'));
+            const problems = validationErrors(error);
+            const rangeProblem = problems.to ?? problems.from ?? problems.days;
+
+            if (rangeProblem) {
+                setRangeError(rangeProblem);
+            } else {
+                toast.error(errorMessage(error, 'Помилка при завантаженні аналітики.'));
+            }
         } finally {
             setLoading(false);
         }
-    }, [siteId, linkId]);
+    }, [target, search]);
 
     useEffect(() => {
-        fetchAnalytics();
-    }, [fetchAnalytics]);
+        load();
+    }, [load]);
 
-    if (loading || !analytics) {
+    // The date fields always show the range being displayed.
+    useEffect(() => {
+        if (analytics) {
+            setCustomFrom(analytics.range.from);
+            setCustomTo(analytics.range.to);
+        }
+    }, [analytics]);
+
+    const update = (changes: Record<string, string | null>) => {
+        const next = new URLSearchParams(params);
+
+        for (const [key, value] of Object.entries(changes)) {
+            if (value === null) {
+                next.delete(key);
+            } else {
+                next.set(key, value);
+            }
+        }
+        setParams(next, { replace: true });
+    };
+
+    const choosePreset = (days: number) => update({ days: String(days), from: null, to: null });
+
+    const applyCustom = (from: string, to: string) => {
+        setCustomFrom(from);
+        setCustomTo(to);
+
+        if (from && to) {
+            update({ from, to, days: null });
+        }
+    };
+
+    const handleExport = async () => {
+        setExporting(true);
+        try {
+            const { blob, filename } = await exportAnalytics(target, query);
+            saveBlob(blob, filename);
+        } catch (error) {
+            toast.error(errorMessage(error, 'Не вдалося вивантажити дані.'));
+        } finally {
+            setExporting(false);
+        }
+    };
+
+    if (!analytics) {
         return (
             <Container maxWidth="lg" sx={{ mt: 4 }}>
-                <Typography>Завантаження...</Typography>
+                <Typography>{loading ? 'Завантаження...' : (rangeError ?? 'Немає даних.')}</Typography>
             </Container>
         );
     }
 
-    const totalClicks = analytics.timeseries.reduce((sum, point) => sum + point.clicks, 0);
+    const previous = analytics.previous;
+    const clicksChange = previous ? delta(analytics.totals.clicks, previous.totals.clicks) : undefined;
+    const visitorsChange = previous ? delta(analytics.totals.visitors, previous.totals.visitors) : undefined;
+    const labels = analytics.timeseries.map((p) => p.date.slice(5));
 
     return (
         <Container maxWidth="lg" sx={{ mt: 4 }}>
@@ -86,9 +215,82 @@ function AnalyticsDashboardPage() {
             <Typography variant="h4" gutterBottom>
                 Аналітика
             </Typography>
-            <Typography variant="subtitle1" color="text.secondary" sx={{ mb: 3 }}>
-                {totalClicks} {totalClicks === 1 ? 'клік' : 'кліків'} за останні 30 днів
-            </Typography>
+
+            <Paper sx={{ p: 2, mb: 3 }}>
+                <Stack direction={{ xs: 'column', md: 'row' }} gap={2} alignItems={{ md: 'center' }} flexWrap="wrap">
+                    <ToggleButtonGroup
+                        size="small"
+                        exclusive
+                        value={activeDays}
+                        onChange={(_, days: number | null) => days && choosePreset(days)}
+                        aria-label="Період"
+                    >
+                        {PRESETS.map((preset) => (
+                            <ToggleButton key={preset.days} value={preset.days}>
+                                {preset.label}
+                            </ToggleButton>
+                        ))}
+                    </ToggleButtonGroup>
+
+                    <Stack direction="row" gap={1} alignItems="center">
+                        <TextField
+                            size="small"
+                            type="date"
+                            label="Від"
+                            value={customFrom}
+                            onChange={(e) => applyCustom(e.target.value, customTo)}
+                            slotProps={{ inputLabel: { shrink: true }, htmlInput: { max: analytics.range.to } }}
+                        />
+                        <TextField
+                            size="small"
+                            type="date"
+                            label="До"
+                            value={customTo}
+                            onChange={(e) => applyCustom(customFrom, e.target.value)}
+                            slotProps={{ inputLabel: { shrink: true }, htmlInput: { max: analytics.range.to } }}
+                        />
+                    </Stack>
+
+                    <FormControlLabel
+                        control={
+                            <Switch
+                                checked={query.compare}
+                                onChange={(e) => update({ compare: e.target.checked ? 'previous' : null })}
+                            />
+                        }
+                        label="Порівняти з попереднім періодом"
+                    />
+
+                    <Box sx={{ flexGrow: 1 }} />
+
+                    <Button variant="outlined" startIcon={<FileDownloadIcon />} onClick={handleExport} disabled={exporting}>
+                        {exporting ? 'Готую...' : 'Експорт CSV'}
+                    </Button>
+                </Stack>
+                {rangeError && (
+                    <Typography color="error" variant="body2" sx={{ mt: 1 }}>
+                        {rangeError}
+                    </Typography>
+                )}
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                    {analytics.range.from} — {analytics.range.to}, {analytics.range.days} дн.
+                    {previous && ` · попередній період: ${previous.range.from} — ${previous.range.to}`}
+                </Typography>
+            </Paper>
+
+            <Grid container spacing={3} sx={{ mb: 3 }}>
+                <Grid item xs={12} sm={6}>
+                    <Kpi label="Кліки" value={analytics.totals.clicks} change={clicksChange} />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                    <Kpi
+                        label="Унікальні відвідувачі (≈)"
+                        value={analytics.totals.visitors}
+                        change={visitorsChange}
+                        hint="Рахуємо унікальні мережі, а не людей: щоб не зберігати IP-адреси, ми усікаємо їх до мережі /24 і хешуємо. Двоє людей в одній мережі — це один відвідувач."
+                    />
+                </Grid>
+            </Grid>
 
             <Paper sx={{ p: 2, mb: 3 }}>
                 <Typography variant="h6" gutterBottom>
@@ -96,8 +298,13 @@ function AnalyticsDashboardPage() {
                 </Typography>
                 <LineChart
                     height={300}
-                    xAxis={[{ scaleType: 'point', data: analytics.timeseries.map((p) => p.date.slice(5)) }]}
-                    series={[{ data: analytics.timeseries.map((p) => p.clicks), label: 'Кліки', area: true }]}
+                    xAxis={[{ scaleType: 'point', data: labels }]}
+                    series={[
+                        { data: analytics.timeseries.map((p) => p.clicks), label: 'Цей період', area: !previous },
+                        ...(previous
+                            ? [{ data: previous.timeseries.map((p) => p.clicks), label: 'Попередній період' }]
+                            : []),
+                    ]}
                 />
             </Paper>
 
@@ -116,7 +323,7 @@ function AnalyticsDashboardPage() {
             {analytics.top_links && (
                 <Paper sx={{ p: 2, mt: 3 }}>
                     <Typography variant="h6" gutterBottom>
-                        Топ посилань
+                        Топ посилань за період
                     </Typography>
                     {analytics.top_links.length === 0 ? (
                         <Typography color="text.secondary">Немає даних.</Typography>
@@ -126,7 +333,8 @@ function AnalyticsDashboardPage() {
                                 <TableRow>
                                     <TableCell>Коротке посилання</TableCell>
                                     <TableCell>Ціль</TableCell>
-                                    <TableCell align="right">Кліки</TableCell>
+                                    <TableCell align="right">За період</TableCell>
+                                    <TableCell align="right">Всього</TableCell>
                                 </TableRow>
                             </TableHead>
                             <TableBody>
@@ -145,6 +353,7 @@ function AnalyticsDashboardPage() {
                                         >
                                             {link.target_url}
                                         </TableCell>
+                                        <TableCell align="right">{link.period_clicks}</TableCell>
                                         <TableCell align="right">{link.clicks_count}</TableCell>
                                     </TableRow>
                                 ))}
