@@ -29,7 +29,10 @@ class SiteController extends Controller
         $site->workspace_id = $request->validated('workspace_id');
         $site->save();
 
-        return response()->json($this->withRole($request, $site->load('workspace:id,name')), 201);
+        // refresh(): the row's defaults (conversion_tracking) exist only in the
+        // database until it is read back, and the response should match every
+        // other endpoint's.
+        return response()->json($this->withRole($request, $site->refresh()->load('workspace:id,name')), 201);
     }
 
     public function show(Request $request, Site $site)

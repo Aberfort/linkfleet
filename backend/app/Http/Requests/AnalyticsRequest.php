@@ -31,6 +31,8 @@ class AnalyticsRequest extends FormRequest
             'from' => ['nullable', 'date_format:Y-m-d'],
             'to' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:today', 'after_or_equal:from', $this->withinMaxSpan()],
             'compare' => ['nullable', Rule::in(['previous'])],
+            // Export only: what the rows are.
+            'type' => ['nullable', Rule::in(['clicks', 'conversions'])],
         ];
     }
 
@@ -53,6 +55,11 @@ class AnalyticsRequest extends FormRequest
         }
 
         return AnalyticsRange::make($this->validated('from'), $this->validated('to'));
+    }
+
+    public function exportsConversions(): bool
+    {
+        return $this->validated('type') === 'conversions';
     }
 
     public function wantsComparison(): bool

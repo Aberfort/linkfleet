@@ -35,6 +35,12 @@ Sanctum bearer tokens, fully stateless — no session cookies, no CSRF dance. `P
 
 Access is enforced by [Policies](app/Policies), not ad-hoc controller checks. Sites belong to a **workspace**, and a user reaches a site only through their role in that workspace — `User::workspaceRoles()` / `roleIn()` is the single place that answers "what may this user reach?", so policies and list endpoints cannot drift apart. Demo-account read-only enforcement is a single [`Gate::before()`](app/Providers/AppServiceProvider.php) hook, so it applies uniformly regardless of resource type.
 
+### Conversions
+
+Every click gets a random 24-character `token` (unrelated to the visitor). With `sites.conversion_tracking` on, `RedirectController` appends it to the destination as `lf_click` (`Support\ConversionUrl` edits the raw query string so the destination's own parameters are untouched). A conversion arrives two ways, both through `Actions\RecordConversion`: `POST /api/conversions` (authenticated, `source=server`) and the public `GET /lf.gif` pixel (`source=pixel`, anyone holding the token could send it). `public/lf.js` is the browser snippet; its tests live in the frontend suite because that is where a browser-like environment exists.
+
+Decisions worth knowing: `external_id` is stored as `''`, not `NULL`, because a unique index treats every NULL as different and a retry would slip past it; the unique key is `(click, event, external_id)`, with a race handled by catching the violation; a click is credited for 90 days (`CONVERSION_ATTRIBUTION_DAYS`); the pixel always answers with the image so a valid token cannot be told from an invalid one; a token from a workspace you are not in answers 404, like an unknown one. Revenue is summed per currency only, and the conversion rate counts a click once however many orders it made and is capped at 100%.
+
 ### Webhooks
 
 Per workspace, owner-only. Events (`link.created|updated|deleted|clicked`) come from a model observer on `Link` and from `RecordLinkClick`, through `Support\WebhookDispatcher`, which costs one query when nobody is subscribed and swallows its own failures — a broken webhook must never cost anyone a redirect. Deliveries are queued (`DeliverWebhook`) and sent by a worker, never inside the request; `docker/railway-start.sh` starts one beside the web server (`QUEUE_WORKERS` for more), and locally you run `php artisan queue:work`. Failed attempts are retried with 10 s / 1 min / 5 min / 30 min backoff, and every attempt is a row in `webhook_deliveries` (trimmed to the latest hundred).
@@ -106,9 +112,12 @@ Every user gets a workspace at registration. The migration that introduced works
 | POST | `/api/sites/{site}/links/import` | ✓ | CSV upload, see below |
 | GET/PUT/DELETE | `/api/links/{link}` | ✓ | |
 | PATCH | `/api/links/{link}/toggle` | ✓ | flips `is_active` |
-| GET | `/api/sites/{site}/analytics` | ✓ | rolled up across all its links; `days` or `from`/`to`, `compare=previous` |
+| POST | `/api/conversions` | ✓ write | report a conversion; idempotent |
+| GET | `/api/sites/{site}/conversions` | ✓ | the latest 50 |
+| GET | `/lf.gif`, `/lf.js` | — | the conversion pixel and browser snippet |
+| GET | `/api/sites/{site}/analytics` | ✓ | rolled up across all its links; `days` or `from`/`to`, `compare=previous`; includes conversions |
 | GET | `/api/links/{link}/analytics` | ✓ | single link, same parameters |
-| GET | `/api/sites/{site}/analytics/export`, `/api/links/{link}/analytics/export` | ✓ | every click as CSV |
+| GET | `/api/sites/{site}/analytics/export`, `/api/links/{link}/analytics/export` | ✓ | clicks or (`type=conversions`) conversions as CSV |
 | GET | `/api/sites/{site}/domain` | ✓ | `{ domain: … \| null }` |
 | POST | `/api/sites/{site}/domain` | ✓ | attach a custom domain, replacing any existing one |
 | POST | `/api/domains/{domain}/verify` | ✓ | DNS TXT check; 422 while the record is missing |
@@ -161,7 +170,7 @@ Rows are validated individually and capped at 1000 per file — a bad row is ski
 vendor/bin/phpunit
 ```
 
-335 Feature/Unit tests — auth flow, ownership boundaries (cross-user 403s, demo-account write blocks), the redirect+click-logging path, analytics aggregation, custom-domain verification and host-based routing. `phpunit.xml` runs against an in-memory SQLite database, so no service container/setup needed.
+425 Feature/Unit tests — auth flow, ownership boundaries (cross-user 403s, demo-account write blocks), the redirect+click-logging path, analytics aggregation, custom-domain verification and host-based routing. `phpunit.xml` runs against an in-memory SQLite database, so no service container/setup needed.
 
 ```bash
 vendor/bin/pint          # check code style

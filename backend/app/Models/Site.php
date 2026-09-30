@@ -16,6 +16,11 @@ class Site extends Model
         'name',
         'domain',
         'description',
+        'conversion_tracking',
+    ];
+
+    protected $casts = [
+        'conversion_tracking' => 'boolean',
     ];
 
     public function workspace(): BelongsTo

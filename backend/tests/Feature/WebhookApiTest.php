@@ -126,6 +126,15 @@ class WebhookApiTest extends TestCase
         $this->assertSame('https://hooks.example.com/in', $webhook->fresh()->url);
     }
 
+    public function test_conversion_created_can_be_subscribed_to(): void
+    {
+        [$owner, $workspace] = $this->ownerWithWorkspace();
+
+        $this->actingAs($owner, 'sanctum')
+            ->postJson("/api/workspaces/{$workspace->id}/webhooks", $this->payload(['events' => ['conversion.created']]))
+            ->assertCreated()->assertJsonPath('events', ['conversion.created']);
+    }
+
     public function test_events_are_validated(): void
     {
         [$owner, $workspace] = $this->ownerWithWorkspace();

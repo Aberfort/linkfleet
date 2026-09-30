@@ -3,12 +3,14 @@
 namespace App\Actions;
 
 use App\Enums\WebhookEvent;
+use App\Models\Click;
 use App\Models\Link;
 use App\Support\ClientIp;
 use App\Support\UserAgentParser;
 use App\Support\WebhookDispatcher;
 use App\Support\WebhookPayload;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class RecordLinkClick
 {
@@ -17,11 +19,14 @@ class RecordLinkClick
         private readonly ClientIp $clientIp,
     ) {}
 
-    public function handle(Link $link, Request $request): void
+    public function handle(Link $link, Request $request): Click
     {
         $ua = $this->userAgentParser->parse($request->userAgent());
 
         $click = $link->clicks()->create([
+            // Every click gets one, tracking or not, so switching tracking on
+            // later never leaves a gap in what can be attributed.
+            'token' => Str::random(24),
             'ip_hash' => $this->clientIp->truncateAndHash($request->ip()),
             'referrer' => $this->referrerHost($request->header('referer')),
             'user_agent' => $request->userAgent(),
@@ -34,6 +39,8 @@ class RecordLinkClick
             'link' => WebhookPayload::link($link),
             'click' => WebhookPayload::click($click),
         ]);
+
+        return $click;
     }
 
     /**

@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Actions\RecordLinkClick;
+use App\Models\Click;
 use App\Models\Domain;
 use App\Models\Link;
+use App\Support\ConversionUrl;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -40,7 +42,8 @@ class RedirectController extends Controller
 
     private function findGlobally(string $code): ?Link
     {
-        return Link::where('short_code', $code)->where('is_active', true)->first();
+        return Link::with('site:id,workspace_id,conversion_tracking')
+            ->where('short_code', $code)->where('is_active', true)->first();
     }
 
     private function findOnHost(string $host, string $code): ?Link
@@ -51,7 +54,12 @@ class RedirectController extends Controller
             return null;
         }
 
-        return $domain->site->links()->where('short_code', $code)->where('is_active', true)->first();
+        $link = $domain->site->links()->where('short_code', $code)->where('is_active', true)->first();
+
+        // Already in hand; saves the redirect a query.
+        $link?->setRelation('site', $domain->site);
+
+        return $link;
     }
 
     private function resolve(?Link $link, string $code, string $action, Request $request, RecordLinkClick $recordLinkClick): Response|View
@@ -75,9 +83,7 @@ class RedirectController extends Controller
             ]);
         }
 
-        $recordLinkClick->handle($link, $request);
-
-        return redirect()->away($link->target_url, Response::HTTP_FOUND);
+        return $this->send($link, $recordLinkClick->handle($link, $request));
     }
 
     private function submitPassword(?Link $link, string $code, string $action, Request $request, RecordLinkClick $recordLinkClick): Response|View
@@ -100,9 +106,20 @@ class RedirectController extends Controller
 
         // Only counts once the visitor is actually let through - showing
         // the password form isn't a click.
-        $recordLinkClick->handle($link, $request);
+        return $this->send($link, $recordLinkClick->handle($link, $request));
+    }
 
-        return redirect()->away($link->target_url, Response::HTTP_FOUND);
+    /**
+     * On to the destination - carrying this click's token when the site has
+     * conversion tracking on, so the destination can hand it back later.
+     */
+    private function send(Link $link, Click $click): Response
+    {
+        $target = $link->site->conversion_tracking
+            ? ConversionUrl::withClick($link->target_url, $click->token)
+            : $link->target_url;
+
+        return redirect()->away($target, Response::HTTP_FOUND);
     }
 
     private function expiredView(): Response

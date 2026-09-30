@@ -100,6 +100,11 @@ class Link extends Model
         return $this->belongsTo(Site::class);
     }
 
+    public function conversions(): HasMany
+    {
+        return $this->hasMany(Conversion::class);
+    }
+
     public function clicks(): HasMany
     {
         return $this->hasMany(Click::class);

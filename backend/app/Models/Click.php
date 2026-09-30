@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Click extends Model
 {
@@ -18,6 +19,7 @@ class Click extends Model
     // payload, so mass-assigning these is safe.
     protected $fillable = [
         'link_id',
+        'token',
         'ip_hash',
         'referrer',
         'user_agent',
@@ -26,6 +28,11 @@ class Click extends Model
         'platform',
         'device_type',
     ];
+
+    public function conversions(): HasMany
+    {
+        return $this->hasMany(Conversion::class);
+    }
 
     public function link(): BelongsTo
     {

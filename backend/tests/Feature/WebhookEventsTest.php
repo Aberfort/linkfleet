@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Actions\RecordConversion;
 use App\Enums\WebhookEvent;
 use App\Jobs\DeliverWebhook;
+use App\Models\Click;
 use App\Models\Domain;
 use App\Models\Link;
 use App\Models\Site;
@@ -165,6 +167,66 @@ class WebhookEventsTest extends TestCase
 
         [$envelope] = $this->queued();
         $this->assertSame('https://go.example.com/promo', $envelope['data']['link']['short_url']);
+    }
+
+    public function test_a_new_conversion_emits_conversion_created_with_the_click_it_came_from(): void
+    {
+        [, $site] = $this->scene(['conversion.created']);
+        $site->update(['conversion_tracking' => true]);
+        $link = Link::factory()->for($site)->create();
+        $click = Click::factory()->create(['link_id' => $link->id]);
+        Queue::fake();
+
+        app(RecordConversion::class)->handle($click, 'purchase', '49.90', 'USD', 'order-1', 'server');
+
+        Queue::assertPushed(DeliverWebhook::class, 1);
+        [$envelope] = $this->queued();
+        $this->assertSame('conversion.created', $envelope['type']);
+        $this->assertSame($link->id, $envelope['data']['link']['id']);
+        $this->assertSame('purchase', $envelope['data']['conversion']['event']);
+        $this->assertSame('49.90', $envelope['data']['conversion']['value']);
+        $this->assertSame('USD', $envelope['data']['conversion']['currency']);
+        $this->assertSame('order-1', $envelope['data']['conversion']['external_id']);
+        $this->assertSame('server', $envelope['data']['conversion']['source']);
+        $this->assertSame($click->token, $envelope['data']['conversion']['click_id']);
+    }
+
+    public function test_a_repeated_conversion_is_not_announced_twice(): void
+    {
+        [, $site] = $this->scene(['conversion.created']);
+        $site->update(['conversion_tracking' => true]);
+        $click = Click::factory()->create(['link_id' => Link::factory()->for($site)->create()->id]);
+        Queue::fake();
+
+        $record = app(RecordConversion::class);
+        $record->handle($click, 'signup', null, null, '', 'server');
+        $record->handle($click, 'signup', null, null, '', 'server');
+
+        Queue::assertPushed(DeliverWebhook::class, 1);
+    }
+
+    public function test_a_conversion_reaches_only_webhooks_that_asked_for_it(): void
+    {
+        [, $site] = $this->scene(['link.clicked']);
+        $site->update(['conversion_tracking' => true]);
+        $click = Click::factory()->create(['link_id' => Link::factory()->for($site)->create()->id]);
+        Queue::fake();
+
+        app(RecordConversion::class)->handle($click, 'signup', null, null, '', 'server');
+
+        $this->nothingQueued();
+    }
+
+    public function test_the_click_event_carries_the_token_a_conversion_will_come_back_with(): void
+    {
+        [, $site] = $this->scene(['link.clicked']);
+        Link::factory()->for($site)->create(['short_code' => 'promo']);
+        Queue::fake();
+
+        $this->get('/r/promo');
+
+        [$envelope] = $this->queued();
+        $this->assertSame(Click::sole()->token, $envelope['data']['click']['id']);
     }
 
     public function test_only_subscribed_events_are_sent(): void

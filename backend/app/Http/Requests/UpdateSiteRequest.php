@@ -26,6 +26,7 @@ class UpdateSiteRequest extends FormRequest
             ],
             'domain' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:1000'],
+            'conversion_tracking' => ['sometimes', 'boolean'],
         ];
     }
 }

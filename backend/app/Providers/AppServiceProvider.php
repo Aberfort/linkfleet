@@ -45,6 +45,10 @@ class AppServiceProvider extends ServiceProvider
                 ->by($user ? 'user:'.$user->id : $request->ip());
         });
 
+        // A pixel fires once per page view on someone else's site, so the
+        // ceiling is generous - but it is public and unauthenticated.
+        RateLimiter::for('conversion-pixel', fn (Request $request) => Limit::perMinute(120)->by($request->ip()));
+
         // Not backed by a model, so there is nothing for a policy to hang
         // off; defining it lets the demo account's read-only rule (the
         // Gate::before below) apply to key management like everything else.

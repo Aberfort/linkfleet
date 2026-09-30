@@ -25,6 +25,11 @@ return [
     // system resolver so every lookup has a hard timeout (see DohResolver).
     'doh_url' => env('DNS_OVER_HTTPS_URL', 'https://cloudflare-dns.com/dns-query'),
 
+    'conversions' => [
+        // How long after a click a conversion is still credited to it.
+        'attribution_days' => (int) env('CONVERSION_ATTRIBUTION_DAYS', 90),
+    ],
+
     'webhooks' => [
         // Webhooks make this server call addresses customers type in. By
         // default only public https endpoints are allowed, so a webhook

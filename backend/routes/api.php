@@ -4,6 +4,7 @@ use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\ApiKeyController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ConfigController;
+use App\Http\Controllers\ConversionController;
 use App\Http\Controllers\DomainController;
 use App\Http\Controllers\LinkController;
 use App\Http\Controllers\SiteController;
@@ -57,6 +58,9 @@ Route::middleware(['auth:sanctum', 'key.scope'])->group(function () {
 
     Route::apiResource('sites.links', LinkController::class)->shallow();
     Route::patch('/links/{link}/toggle', [LinkController::class, 'toggle']);
+
+    Route::post('/conversions', [ConversionController::class, 'store']);
+    Route::get('/sites/{site}/conversions', [ConversionController::class, 'index']);
 
     Route::get('/sites/{site}/analytics', [AnalyticsController::class, 'site']);
     Route::get('/links/{link}/analytics', [AnalyticsController::class, 'link']);

@@ -2,11 +2,14 @@
 
 namespace Database\Seeders;
 
+use App\Models\Click;
+use App\Models\Conversion;
 use App\Models\Link;
 use App\Models\Site;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 
 /**
  * Idempotent by design - safe to run on every deploy alongside
@@ -58,6 +61,57 @@ class DemoDataSeeder extends Seeder
         $this->seedLink($docs, 'api-reference', 'https://docs.example.com/api', 40);
 
         $this->seedDomain($docs);
+
+        $this->seedConversions($marketing);
+        $this->seedConversions($docs);
+    }
+
+    /**
+     * Turns tracking on and gives a share of the site's existing clicks a
+     * plausible outcome, so the demo dashboard shows a real conversions
+     * block. Clicks seeded before conversions existed have no token, so the
+     * ones picked get one here. Signups arrive "from a browser", purchases
+     * "from a server", as in real use. Does nothing if the site already
+     * has any, so it is safe on every deploy.
+     */
+    private function seedConversions(Site $site): void
+    {
+        $site->update(['conversion_tracking' => true]);
+
+        $linkIds = $site->links()->pluck('id');
+
+        if (Conversion::whereIn('link_id', $linkIds)->exists()) {
+            return;
+        }
+
+        $clicks = Click::whereIn('link_id', $linkIds);
+        $sample = (int) ceil($clicks->count() * 0.09);
+
+        $rows = [];
+
+        foreach ((clone $clicks)->inRandomOrder()->limit($sample)->get() as $click) {
+            $click->token ?? $click->forceFill(['token' => Str::random(24)])->save();
+
+            $purchase = rand(1, 100) <= 30;
+            $convertedAt = Carbon::parse($click->created_at)->addMinutes(rand(1, 240));
+
+            $rows[] = [
+                'click_id' => $click->id,
+                'link_id' => $click->link_id,
+                'event' => $purchase ? 'purchase' : 'signup',
+                'value' => $purchase ? rand(1900, 14900) / 100 : null,
+                'currency' => $purchase ? 'USD' : null,
+                'external_id' => $purchase ? 'demo-order-'.$click->id : '',
+                'source' => $purchase ? Conversion::SOURCE_SERVER : Conversion::SOURCE_PIXEL,
+                'created_at' => $convertedAt->isFuture() ? now() : $convertedAt,
+            ];
+        }
+
+        // A bulk insert bypasses model events on purpose: seeding must not
+        // fire webhooks at anyone.
+        foreach (array_chunk($rows, 200) as $chunk) {
+            Conversion::insert($chunk);
+        }
     }
 
     /**
@@ -97,6 +151,7 @@ class DemoDataSeeder extends Seeder
 
             $rows[] = [
                 'link_id' => $link->id,
+                'token' => Str::random(24),
                 'ip_hash' => hash('sha256', 'demo-seed-'.$i.'-'.$link->id),
                 'referrer' => $referrer,
                 'user_agent' => null,

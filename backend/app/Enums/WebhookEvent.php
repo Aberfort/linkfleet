@@ -9,6 +9,7 @@ enum WebhookEvent: string
     case LinkUpdated = 'link.updated';
     case LinkDeleted = 'link.deleted';
     case LinkClicked = 'link.clicked';
+    case ConversionCreated = 'conversion.created';
     case Ping = 'ping';
 
     /** The events a webhook may subscribe to (everything but ping). */

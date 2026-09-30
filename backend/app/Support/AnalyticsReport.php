@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\Click;
+use App\Models\Conversion;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
@@ -12,8 +13,11 @@ use Illuminate\Support\Collection;
  */
 class AnalyticsReport
 {
-    /** @param  Builder<Click>  $clicks  every click of whatever is being reported on */
-    public function __construct(private Builder $clicks) {}
+    /**
+     * @param  Builder<Click>  $clicks  every click of whatever is being reported on
+     * @param  Builder<Conversion>|null  $conversions  every conversion of the same
+     */
+    public function __construct(private Builder $clicks, private ?Builder $conversions = null) {}
 
     /**
      * @return array<string, mixed>
@@ -31,14 +35,20 @@ class AnalyticsReport
             'devices' => $this->breakdown($inRange, 'device_type'),
         ];
 
+        if ($this->conversions) {
+            $report['conversions'] = $this->conversionsFor($range, $report['totals']['clicks'], detailed: true);
+        }
+
         if ($withComparison) {
             $previous = $range->previous();
             $before = $this->within($previous);
+            $beforeTotals = $this->totals($before);
 
             $report['previous'] = [
                 'range' => $previous->toArray(),
-                'totals' => $this->totals($before),
+                'totals' => $beforeTotals,
                 'timeseries' => $this->timeseries($before, $previous),
+                ...($this->conversions ? ['conversions' => $this->conversionsFor($previous, $beforeTotals['clicks'], detailed: false)] : []),
             ];
         }
 
@@ -100,5 +110,69 @@ class AnalyticsReport
             ->orderByDesc('clicks')
             ->limit(10)
             ->get();
+    }
+
+    /** @return Builder<Conversion> */
+    public function conversionsWithin(AnalyticsRange $range): Builder
+    {
+        return (clone $this->conversions)
+            ->where('conversions.created_at', '>=', $range->start())
+            ->where('conversions.created_at', '<', $range->end());
+    }
+
+    /**
+     * What visitors did after clicking, counted in the range they did it.
+     *
+     * `rate` is the share of the range's clicks that were followed by a
+     * conversion, counting a click once however many orders it led to. A
+     * conversion can belong to a click from before the range, so it is
+     * capped at 100% rather than allowed to say otherwise.
+     *
+     * @return array<string, mixed>
+     */
+    private function conversionsFor(AnalyticsRange $range, int $clicks, bool $detailed): array
+    {
+        $rows = $this->conversionsWithin($range)
+            ->selectRaw('event, currency, COUNT(*) as conversions, SUM(value) as amount')
+            ->groupBy('event', 'currency')
+            ->get();
+
+        $convertedClicks = (int) $this->conversionsWithin($range)->distinct()->count('conversions.click_id');
+
+        $result = [
+            'total' => (int) $rows->sum('conversions'),
+            'rate' => $clicks > 0 ? min(1.0, round($convertedClicks / $clicks, 4)) : null,
+            'revenue' => $this->revenueOf($rows),
+        ];
+
+        if ($detailed) {
+            $result['by_event'] = $rows->groupBy('event')
+                ->map(fn ($group, $event) => [
+                    'event' => $event,
+                    'conversions' => (int) $group->sum('conversions'),
+                    'revenue' => $this->revenueOf($group),
+                ])
+                ->sortByDesc('conversions')
+                ->take(10)
+                ->values();
+        }
+
+        return $result;
+    }
+
+    /**
+     * Money is only ever added within one currency. Rows without a value
+     * (a signup) carry no currency and add nothing.
+     *
+     * @param  Collection<int, object>  $rows
+     * @return Collection<int, array{currency: string, amount: float}>
+     */
+    private function revenueOf(Collection $rows): Collection
+    {
+        return $rows->filter(fn ($row) => $row->currency !== null && $row->amount !== null)
+            ->groupBy('currency')
+            ->map(fn ($group, $currency) => ['currency' => $currency, 'amount' => round((float) $group->sum('amount'), 2)])
+            ->sortByDesc('amount')
+            ->values();
     }
 }
