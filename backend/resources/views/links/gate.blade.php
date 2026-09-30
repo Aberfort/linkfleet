@@ -97,7 +97,6 @@
             {{-- Relative on purpose: the gate posts back to whichever host
                  served it, so a branded domain stays on itself. --}}
             <form method="POST" action="{{ $action }}">
-                @csrf
                 <label for="password">Пароль</label>
                 <input id="password" name="password" type="password" autofocus autocomplete="off" required>
                 @if ($error)

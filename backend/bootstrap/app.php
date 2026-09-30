@@ -5,9 +5,14 @@ use App\Http\Middleware\EnsureBillingEnabled;
 use App\Http\Middleware\RealIpFromHeader;
 use App\Http\Middleware\RequireSession;
 use Illuminate\Auth\AuthenticationException;
+use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
+use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
+use Illuminate\Session\Middleware\StartSession;
+use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -23,6 +28,21 @@ return Application::configure(basePath: dirname(__DIR__))
             'key.scope' => EnforceKeyScope::class,
             'session' => RequireSession::class,
             'billing' => EnsureBillingEnabled::class,
+        ]);
+
+        // Nothing here keeps a cookie or a session. The API is Bearer-token
+        // only, and the routes a visitor meets (the redirect, the password
+        // gate, QR codes, the pixel) remember nothing about them. Left on, the
+        // web group handed a session and an XSRF cookie to every person who
+        // merely followed a short link - needless, and at odds with a service
+        // that promises not to track. The gate posts without a CSRF token
+        // because there is no session for a forged post to act on.
+        $middleware->web(remove: [
+            EncryptCookies::class,
+            AddQueuedCookiesToResponse::class,
+            StartSession::class,
+            ShareErrorsFromSession::class,
+            ValidateCsrfToken::class,
         ]);
 
         // The app sits behind a reverse proxy in every deployment (Railway's

@@ -101,6 +101,41 @@ Three coarse roles instead of a permission matrix:
 
 Every user gets a workspace at registration. The migration that introduced workspaces gave each existing user one and moved their sites into it, so nothing changed for them; it was run against MySQL with old-shape data, rolled back, and re-applied before it shipped.
 
+### Plans and billing (the hosted edition)
+
+A switch, not a fork. With `BILLING_ENABLED` off (the default) there are no plans, no limits, no billing routes and no billing screens — a self-hosted install behaves exactly as it did before any of this existed. Turned on, a workspace gets a plan, and **a plan sells room, never a feature**: it puts a ceiling on links, custom domains and members, and nothing else is locked. The numbers live in [`config/billing.php`](config/billing.php) and nothing else in the code knows them.
+
+| | links | custom domains | members |
+|---|--:|--:|--:|
+| Free | 25 | 0 | 1 |
+| Pro | 1 000 | 3 | 3 |
+| Team | 10 000 | 10 | 15 |
+
+Those are placeholders to tune, not a price list. A plan is "for sale" once its Paddle price ids are set (`PADDLE_PRICE_PRO_MONTHLY`, `…_YEARLY`, `PADDLE_PRICE_TEAM_…`).
+
+**How a plan is decided.** `App\Billing\Entitlements` is the one place: the better of what the workspace was *given* (`php artisan billing:grant`) and what it *bought*, else Free. A subscription counts while it is in force — active, in a trial, past due (Paddle retries a declined card for days; the plan is not taken away on the first failure) or cancelled but paid to the end of its period. Paused and cancelled ones do not.
+
+**Where it says no.** Every path that makes something asks `Entitlements`: creating a link, each row of a CSV import, attaching a domain, adding a member. It answers `402` with what, how much and which workspace. Two guarantees are tested rather than assumed: it only ever refuses *growth* (redirects, reading, editing, analytics, webhooks and deleting never depend on a plan, so a lapsed subscription cannot take a customer's live links down), and replacing a site's domain adds nothing to the count, so it works when the plan is full. Where a plan has a ceiling the workspace row is locked while the check and the insert happen, so two requests cannot both take the last slot.
+
+**Payments go through Paddle, via [`laravel/cashier-paddle`](https://github.com/laravel/cashier-paddle)** — a payment integration written from scratch is exactly what not to do. Paddle is the merchant of record: it charges the card, handles the VAT and sends the invoice, and no card detail touches this app. What is ours is the part Cashier cannot know:
+
+- **The payer is a user, the subscription belongs to a workspace.** A Paddle customer is one person (Cashier looks them up by email), so making the workspace the customer would stop anyone paying for two client workspaces. Instead a subscription is filed under type `workspace:{id}`, and only the person who pays can change or cancel it — a second owner sees it, not ends it.
+- **The webhook fails closed.** Cashier attaches its signature check only `if (config('cashier.webhook_secret'))`. With no secret the endpoint accepts anything, and the HMAC of an empty key is something anyone can compute — so a forged `subscription.created` would be a free Team plan. `POST /api/paddle/webhook` is registered by us instead (Cashier's own route is switched off), refuses everything with `503` while `PADDLE_WEBHOOK_SECRET` is missing, ignores signature parts it doesn't recognise (Paddle may add `h2`; Cashier alone would answer `500`), and accepts any one of several `h1` values while a secret is rotated. `PADDLE_WEBHOOK_TOLERANCE` (default 60 s) is how old a signature may be.
+- **Events are kept in order.** Paddle does not promise to deliver them in order and Cashier applies each as it arrives, so an old "active" turning up after "canceled" would hand the plan back. Each subscription remembers the `occurred_at` of the newest event applied (`SubscriptionClock`) and drops older ones.
+- **Buying and ending need a session**, never an API key, and a workspace still being billed cannot be deleted.
+
+**Setting it up.** Do this in Paddle's *sandbox* first (`PADDLE_SANDBOX=true`); its test cards cost nothing.
+
+1. Create a Paddle account and a product with a recurring price per plan and interval; put the `pri_…` ids in the env vars above.
+2. Developer tools → Authentication: a **client-side token** (`PADDLE_CLIENT_SIDE_TOKEN`, public by design — Paddle.js needs it in the browser) and an **API key** (`PADDLE_API_KEY`, secret).
+3. Developer tools → Notifications: a destination at `https://<your backend>/api/paddle/webhook` with these events — *customer.updated, transaction.completed, transaction.updated, subscription.created, subscription.updated, subscription.paused, subscription.canceled* — and copy its secret to `PADDLE_WEBHOOK_SECRET`.
+4. Set a *default payment link* in Paddle's checkout settings, and set `BILLING_ENABLED=true`.
+5. `php artisan billing:check` lists what is still missing and prints the webhook URL. Going live additionally needs Paddle to approve the domain, which asks for pricing, terms of service, a privacy policy and a refund policy on the site — see [docs/DATA.md](../docs/DATA.md) for the facts a privacy policy must state.
+
+`php artisan billing:grant {workspace} {plan}` gives a workspace a plan without a subscription (your own workspaces, a partner, a refund made good); `--clear` takes it away.
+
+**What has and has not been checked.** The plan logic, every limit, the webhook (signature, replay, rotation, order, the missing-secret case) and the billing endpoints are covered by tests, which were also run against MySQL and by breaking each protection to see a test fail; the webhook was additionally driven over real HTTP with independently signed requests. What cannot be checked without a Paddle account is Paddle itself: the requests Cashier makes to Paddle's API are faked in tests, and Paddle.js was never opened against a sandbox. Run one full sandbox purchase, plan change and cancellation before taking real money.
+
 ## API
 
 | Method | Path | Auth | |
@@ -184,7 +219,7 @@ Rows are validated individually and capped at 1000 per file — a bad row is ski
 vendor/bin/phpunit
 ```
 
-491 Feature/Unit tests — auth flow, ownership boundaries (cross-user 403s, demo-account write blocks), the redirect+click-logging path, analytics aggregation, custom-domain verification and host-based routing. `phpunit.xml` runs against an in-memory SQLite database, so no service container/setup needed.
+615 Feature/Unit tests — auth flow, ownership boundaries (cross-user 403s, demo-account write blocks), the redirect+click-logging path, analytics aggregation, custom-domain verification and host-based routing, plan limits and the Paddle webhook. `phpunit.xml` runs against an in-memory SQLite database, so no service container/setup needed.
 
 ```bash
 vendor/bin/pint          # check code style
@@ -196,12 +231,13 @@ vendor/bin/pint --dirty  # fix it
 ```
 app/
   Actions/          RecordLinkClick - the redirect endpoint's core logic
+  Billing/          Plans, Entitlements (who may have how much), SubscriptionClock - the hosted edition
   Http/Controllers/
   Http/Requests/     Validation + authorization (FormRequest::authorize())
   Enums/            WorkspaceRole, WebhookEvent
   Jobs/             DeliverWebhook
   Observers/        LinkObserver - turns link changes into webhook events
-  Models/            User, Workspace, Site, Link, Click, Domain
+  Models/            User, Workspace, Site, Link, Click, Conversion, Domain, Webhook
   Policies/          Role checks (Workspace, Site, Link, Domain)
   Support/           UserAgentParser, ClientIp, GeoIp, ApiKeyScope, OutboundUrlGuard, WebhookSender/Dispatcher/Signature, DohResolver, DnsTxtLookup, DomainProbe - small helpers; the DNS ones are test seams
 database/
