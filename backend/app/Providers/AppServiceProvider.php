@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Paddle\Cashier;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -20,6 +21,16 @@ class AppServiceProvider extends ServiceProvider
     {
         // One reader per request, opened only if a click actually needs it.
         $this->app->singleton(GeoIp::class);
+
+        // Cashier would register its own /paddle/webhook whether or not
+        // billing is on, and guard it only if a secret happens to be set.
+        // The webhook is declared in routes/api.php instead.
+        Cashier::ignoreRoutes();
+
+        // A payment that failed once is retried by Paddle for days; the
+        // workspace keeps its plan meanwhile instead of losing it on the
+        // first declined card.
+        Cashier::keepPastDueSubscriptionsActive();
     }
 
     /**
@@ -50,6 +61,9 @@ class AppServiceProvider extends ServiceProvider
         // A pixel fires once per page view on someone else's site, so the
         // ceiling is generous - but it is public and unauthenticated.
         RateLimiter::for('conversion-pixel', fn (Request $request) => Limit::perMinute(120)->by($request->ip()));
+
+        // Paddle delivers from a handful of addresses in bursts.
+        RateLimiter::for('paddle-webhook', fn (Request $request) => Limit::perMinute(300)->by($request->ip()));
 
         // Not backed by a model, so there is nothing for a policy to hang
         // off; defining it lets the demo account's read-only rule (the

@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Actions\ImportLinksFromCsv;
+use App\Billing\Entitlements;
+use App\Billing\LimitedResource;
 use App\Http\Requests\ImportLinksRequest;
 use App\Http\Requests\StoreLinkRequest;
 use App\Http\Requests\UpdateLinkRequest;
@@ -29,11 +31,15 @@ class LinkController extends Controller
         $data = $request->validated();
         $password = $this->pullPassword($data);
 
-        $link = $site->links()->create($data);
+        $link = Entitlements::for($site->workspace)->within(LimitedResource::Links, function () use ($site, $data, $password) {
+            $link = $site->links()->create($data);
 
-        if ($password !== null) {
-            $link->forceFill(['password' => $password])->save();
-        }
+            if ($password !== null) {
+                $link->forceFill(['password' => $password])->save();
+            }
+
+            return $link;
+        });
 
         // Without this the response omits everything the database filled in
         // by default (is_active, clicks_count, expires_at), so the created

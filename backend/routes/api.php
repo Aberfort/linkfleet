@@ -3,10 +3,13 @@
 use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\ApiKeyController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\BillingController;
 use App\Http\Controllers\ConfigController;
 use App\Http\Controllers\ConversionController;
 use App\Http\Controllers\DomainController;
 use App\Http\Controllers\LinkController;
+use App\Http\Controllers\PaddleWebhookController;
+use App\Http\Controllers\PlanController;
 use App\Http\Controllers\SiteController;
 use App\Http\Controllers\WebhookController;
 use App\Http\Controllers\WorkspaceController;
@@ -17,6 +20,15 @@ use Illuminate\Support\Facades\Route;
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::get('/config', [ConfigController::class, 'index']);
+
+// The hosted edition's price list; a 404 wherever nothing is sold.
+Route::get('/plans', [PlanController::class, 'index'])->middleware('billing');
+
+// Paddle calls this, signed. Behind the billing switch (404 when off), and
+// outside the general throttle: Paddle's own retries would trip it.
+Route::post('/paddle/webhook', PaddleWebhookController::class)
+    ->middleware(['billing', 'throttle:paddle-webhook'])
+    ->withoutMiddleware('throttle:api');
 
 // Захищені маршрути
 Route::middleware(['auth:sanctum', 'key.scope'])->group(function () {
@@ -31,6 +43,20 @@ Route::middleware(['auth:sanctum', 'key.scope'])->group(function () {
     });
 
     Route::apiResource('workspaces', WorkspaceController::class);
+
+    Route::middleware('billing')->group(function () {
+        Route::get('/workspaces/{workspace}/billing', [BillingController::class, 'show']);
+
+        // Spending and cancelling need a person at a keyboard, never an API
+        // key; and each reaches out to Paddle, hence the tight limit.
+        Route::middleware(['session', 'throttle:10,1'])->group(function () {
+            Route::post('/workspaces/{workspace}/billing/checkout', [BillingController::class, 'checkout']);
+            Route::post('/workspaces/{workspace}/billing/change', [BillingController::class, 'change']);
+            Route::post('/workspaces/{workspace}/billing/cancel', [BillingController::class, 'cancel']);
+            Route::post('/workspaces/{workspace}/billing/resume', [BillingController::class, 'resume']);
+            Route::get('/workspaces/{workspace}/billing/payment-method', [BillingController::class, 'paymentMethod']);
+        });
+    });
     Route::get('/workspaces/{workspace}/members', [WorkspaceMemberController::class, 'index']);
     Route::post('/workspaces/{workspace}/members', [WorkspaceMemberController::class, 'store']);
     Route::patch('/workspaces/{workspace}/members/{user}', [WorkspaceMemberController::class, 'update']);

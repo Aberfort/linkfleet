@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Billing\Entitlements;
+use App\Billing\LimitedResource;
 use App\Http\Requests\StoreDomainRequest;
 use App\Models\Domain;
 use App\Models\Site;
@@ -23,10 +25,15 @@ class DomainController extends Controller
     public function store(StoreDomainRequest $request, Site $site)
     {
         // One domain per site - replacing means the old host stops resolving,
-        // which is the owner's call to make.
-        $site->customDomain?->delete();
+        // which is the owner's call to make. A replacement adds nothing to the
+        // workspace's count, so it is allowed even when the plan is full.
+        $replacing = $site->customDomain()->exists();
 
-        $domain = $site->customDomain()->create($request->validated());
+        $domain = Entitlements::for($site->workspace)->within(LimitedResource::Domains, function () use ($site, $request) {
+            $site->customDomain?->delete();
+
+            return $site->customDomain()->create($request->validated());
+        }, adding: $replacing ? 0 : 1);
 
         return response()->json($domain->refresh(), 201);
     }

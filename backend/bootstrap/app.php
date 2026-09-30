@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EnforceKeyScope;
+use App\Http\Middleware\EnsureBillingEnabled;
 use App\Http\Middleware\RealIpFromHeader;
 use App\Http\Middleware\RequireSession;
 use Illuminate\Auth\AuthenticationException;
@@ -21,6 +22,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'key.scope' => EnforceKeyScope::class,
             'session' => RequireSession::class,
+            'billing' => EnsureBillingEnabled::class,
         ]);
 
         // The app sits behind a reverse proxy in every deployment (Railway's

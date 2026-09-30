@@ -2,6 +2,9 @@
 
 namespace App\Actions;
 
+use App\Billing\Entitlements;
+use App\Billing\LimitedResource;
+use App\Billing\PlanLimitReached;
 use App\Models\Site;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Validator;
@@ -15,14 +18,17 @@ class ImportLinksFromCsv
     public const MAX_ROWS = 1000;
 
     /**
-     * @return array{imported: int, skipped: array<int, array{row: int, reason: string}>}
+     * `plan_limit` is true when the import stopped because the workspace's plan
+     * is full - the rows after that point were not even tried.
+     *
+     * @return array{imported: int, skipped: array<int, array{row: int, reason: string}>, plan_limit: bool}
      */
     public function handle(Site $site, UploadedFile $file): array
     {
         $handle = fopen($file->getRealPath(), 'r');
 
         if ($handle === false) {
-            return ['imported' => 0, 'skipped' => [['row' => 0, 'reason' => 'Не вдалося прочитати файл.']]];
+            return ['imported' => 0, 'skipped' => [['row' => 0, 'reason' => 'Не вдалося прочитати файл.']], 'plan_limit' => false];
         }
 
         $header = fgetcsv($handle);
@@ -34,11 +40,14 @@ class ImportLinksFromCsv
             return [
                 'imported' => 0,
                 'skipped' => [['row' => 1, 'reason' => 'У першому рядку має бути заголовок зі стовпцем target_url.']],
+                'plan_limit' => false,
             ];
         }
 
+        $entitlements = Entitlements::for($site->workspace);
         $imported = 0;
         $skipped = [];
+        $planLimit = false;
         $rowNumber = 1;
 
         while (($row = fgetcsv($handle)) !== false) {
@@ -82,17 +91,24 @@ class ImportLinksFromCsv
                 continue;
             }
 
-            $site->links()->create([
-                'target_url' => $targetUrl,
-                'short_code' => $shortCode ?: null,
-            ]);
+            try {
+                $entitlements->within(LimitedResource::Links, fn () => $site->links()->create([
+                    'target_url' => $targetUrl,
+                    'short_code' => $shortCode ?: null,
+                ]));
+            } catch (PlanLimitReached $full) {
+                // Everything after this row would meet the same wall.
+                $skipped[] = ['row' => $rowNumber, 'reason' => $full->getMessage()];
+                $planLimit = true;
+                break;
+            }
 
             $imported++;
         }
 
         fclose($handle);
 
-        return ['imported' => $imported, 'skipped' => $skipped];
+        return ['imported' => $imported, 'skipped' => $skipped, 'plan_limit' => $planLimit];
     }
 
     /**

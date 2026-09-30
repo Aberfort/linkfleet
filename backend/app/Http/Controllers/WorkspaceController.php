@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Billing\Entitlements;
 use App\Enums\WorkspaceRole;
 use App\Http\Requests\StoreWorkspaceRequest;
 use App\Http\Requests\UpdateWorkspaceRequest;
@@ -52,6 +53,17 @@ class WorkspaceController extends Controller
     public function destroy(Workspace $workspace)
     {
         $this->authorize('delete', $workspace);
+
+        // Deleting the workspace would leave its subscription billing a card
+        // for something that no longer exists. One that is already set to end
+        // is fine - it costs nothing more.
+        $subscription = Entitlements::for($workspace)->subscription();
+
+        if ($subscription !== null && ! $subscription->onGracePeriod()) {
+            return response()->json([
+                'message' => 'Спершу скасуйте підписку цього workspace — інакше вона продовжуватиме списувати гроші.',
+            ], 409);
+        }
 
         $workspace->delete();
 

@@ -43,4 +43,13 @@ class WorkspacePolicy
     {
         return $user->roleIn($workspace)?->isOwner() ?? false;
     }
+
+    /**
+     * Buying, changing and cancelling a plan. Owners only - and, like every
+     * write, never the demo account (Gate::before).
+     */
+    public function manageBilling(User $user, Workspace $workspace): bool
+    {
+        return $user->roleIn($workspace)?->isOwner() ?? false;
+    }
 }

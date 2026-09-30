@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Billing\Entitlements;
+use App\Billing\LimitedResource;
 use App\Enums\WorkspaceRole;
 use App\Http\Requests\AddMemberRequest;
 use App\Http\Requests\UpdateMemberRequest;
@@ -46,7 +48,10 @@ class WorkspaceMemberController extends Controller
             ]);
         }
 
-        $workspace->members()->attach($user->id, ['role' => $request->validated('role')]);
+        Entitlements::for($workspace)->within(
+            LimitedResource::Members,
+            fn () => $workspace->members()->attach($user->id, ['role' => $request->validated('role')]),
+        );
 
         return response()->json($this->present($workspace->members()->find($user->id)), 201);
     }
