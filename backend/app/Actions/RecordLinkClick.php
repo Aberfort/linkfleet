@@ -2,9 +2,12 @@
 
 namespace App\Actions;
 
+use App\Enums\WebhookEvent;
 use App\Models\Link;
 use App\Support\ClientIp;
 use App\Support\UserAgentParser;
+use App\Support\WebhookDispatcher;
+use App\Support\WebhookPayload;
 use Illuminate\Http\Request;
 
 class RecordLinkClick
@@ -18,7 +21,7 @@ class RecordLinkClick
     {
         $ua = $this->userAgentParser->parse($request->userAgent());
 
-        $link->clicks()->create([
+        $click = $link->clicks()->create([
             'ip_hash' => $this->clientIp->truncateAndHash($request->ip()),
             'referrer' => $this->referrerHost($request->header('referer')),
             'user_agent' => $request->userAgent(),
@@ -26,6 +29,11 @@ class RecordLinkClick
         ]);
 
         $link->increment('clicks_count');
+
+        WebhookDispatcher::dispatch(WebhookEvent::LinkClicked, $link->site_id, fn () => [
+            'link' => WebhookPayload::link($link),
+            'click' => WebhookPayload::click($click),
+        ]);
     }
 
     /**

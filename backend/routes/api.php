@@ -7,6 +7,7 @@ use App\Http\Controllers\ConfigController;
 use App\Http\Controllers\DomainController;
 use App\Http\Controllers\LinkController;
 use App\Http\Controllers\SiteController;
+use App\Http\Controllers\WebhookController;
 use App\Http\Controllers\WorkspaceController;
 use App\Http\Controllers\WorkspaceMemberController;
 use Illuminate\Support\Facades\Route;
@@ -33,6 +34,16 @@ Route::middleware(['auth:sanctum', 'key.scope'])->group(function () {
     Route::post('/workspaces/{workspace}/members', [WorkspaceMemberController::class, 'store']);
     Route::patch('/workspaces/{workspace}/members/{user}', [WorkspaceMemberController::class, 'update']);
     Route::delete('/workspaces/{workspace}/members/{user}', [WorkspaceMemberController::class, 'destroy']);
+
+    Route::get('/workspaces/{workspace}/webhooks', [WebhookController::class, 'index']);
+    Route::post('/workspaces/{workspace}/webhooks', [WebhookController::class, 'store']);
+    Route::get('/webhooks/{webhook}', [WebhookController::class, 'show']);
+    Route::put('/webhooks/{webhook}', [WebhookController::class, 'update']);
+    Route::delete('/webhooks/{webhook}', [WebhookController::class, 'destroy']);
+    Route::post('/webhooks/{webhook}/rotate-secret', [WebhookController::class, 'rotateSecret']);
+    // Calls out to a customer-supplied address, hence the tight limit.
+    Route::post('/webhooks/{webhook}/test', [WebhookController::class, 'test'])->middleware('throttle:10,1');
+    Route::get('/webhooks/{webhook}/deliveries', [WebhookController::class, 'deliveries']);
 
     Route::apiResource('sites', SiteController::class);
     Route::post('/sites/{site}/links/import', [LinkController::class, 'import']);

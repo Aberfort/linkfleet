@@ -21,6 +21,12 @@ php artisan serve
 
 The API is now at `http://localhost:8000`. Seeding creates a read-only demo account (`demo@linkfleet.app` / `demo12345`, see [`DemoUserSeeder`](database/seeders/DemoUserSeeder.php)) plus a couple of sample sites/links/clicks so there's something to look at (see [`DemoDataSeeder`](database/seeders/DemoDataSeeder.php)). Both seeders are idempotent — safe to re-run.
 
+Webhook deliveries are queued, so also run a worker in a second terminal (the queue lives in the database):
+
+```bash
+php artisan queue:work
+```
+
 To use MySQL instead, uncomment the `DB_*` block in `.env.example` (matches `docker-compose.yml`).
 
 ## Auth model
@@ -28,6 +34,23 @@ To use MySQL instead, uncomment the `DB_*` block in `.env.example` (matches `doc
 Sanctum bearer tokens, fully stateless — no session cookies, no CSRF dance. `POST /api/login` / `/api/register` return a token; send it as `Authorization: Bearer <token>` on everything else.
 
 Access is enforced by [Policies](app/Policies), not ad-hoc controller checks. Sites belong to a **workspace**, and a user reaches a site only through their role in that workspace — `User::workspaceRoles()` / `roleIn()` is the single place that answers "what may this user reach?", so policies and list endpoints cannot drift apart. Demo-account read-only enforcement is a single [`Gate::before()`](app/Providers/AppServiceProvider.php) hook, so it applies uniformly regardless of resource type.
+
+### Webhooks
+
+Per workspace, owner-only. Events (`link.created|updated|deleted|clicked`) come from a model observer on `Link` and from `RecordLinkClick`, through `Support\WebhookDispatcher`, which costs one query when nobody is subscribed and swallows its own failures — a broken webhook must never cost anyone a redirect. Deliveries are queued (`DeliverWebhook`) and sent by a worker, never inside the request; `docker/railway-start.sh` starts one beside the web server (`QUEUE_WORKERS` for more), and locally you run `php artisan queue:work`. Failed attempts are retried with 10 s / 1 min / 5 min / 30 min backoff, and every attempt is a row in `webhook_deliveries` (trimmed to the latest hundred).
+
+The reason this gets its own paragraph: the server calls addresses that customers type in. `Support\OutboundUrlGuard` is the defence against that turning into server-side request forgery.
+
+- The URL is taken apart and **rebuilt** from parts that passed strict checks, so a hostname PHP and curl would read differently cannot slip through. Backslashes, whitespace, credentials, odd ports, non-ASCII names, and numeric hosts curl would read as IPv4 (`127.1`, `0x7f.0.0.1`, `2130706433`) are refused outright.
+- The name is resolved **here** (A and AAAA, over DoH with a timeout), and every address must be public. One private answer among several condemns the name. Private means loopback, RFC 1918, link-local (cloud metadata), CGNAT, multicast, reserved, IPv6 unique-local, and IPv4 hidden inside IPv6 (`::ffff:`, NAT64, 6to4).
+- The connection goes to the address that was checked (`CURLOPT_RESOLVE`), so DNS changing between the check and the request does not help. It is checked again on every delivery.
+- Redirects are not followed, replies are cut off at 1 MB by curl, and only the first kilobyte is kept.
+
+Two traps found while building it, both pinned by tests: Guzzle's `stream` option silently swaps curl for a handler that ignores `CURLOPT_RESOLVE` (which would drop the pinning), and `Http::fake` cannot show which handler would run — so the size limit is done in curl instead, and verified against a real endless HTTP reply.
+
+Requests are signed `t=<time>,v1=HMAC-SHA256(secret, "<t>.<body>")` (`Support\WebhookSignature`); the secret is encrypted at rest and shown once. `WEBHOOKS_ALLOW_PRIVATE_TARGETS=true` lifts the address rule for self-hosters who want to notify something on their LAN. Receiver-side recipes are in [`docs/API.md`](../docs/API.md#webhooks) and were run against real signatures.
+
+Known limits: one worker sends one delivery at a time (a very busy `link.clicked` webhook can queue up — raise `QUEUE_WORKERS`); a failing endpoint is never switched off automatically; deleting a site or workspace removes its links below the model events, so `link.deleted` is not sent for each.
 
 ### API keys
 
@@ -67,6 +90,10 @@ Every user gets a workspace at registration. The migration that introduced works
 | POST | `/api/logout` | ✓ | |
 | GET | `/api/user` | ✓ | |
 | GET | `/api/config` | — | `{ registration_enabled, custom_domain_target }` |
+| GET/POST | `/api/workspaces/{workspace}/webhooks` | ✓ owner | list / create (the secret is returned once) |
+| GET/PUT/DELETE | `/api/webhooks/{webhook}` | ✓ owner | |
+| POST | `/api/webhooks/{webhook}/rotate-secret`, `/test` | ✓ owner | `/test` sends a `ping` now |
+| GET | `/api/webhooks/{webhook}/deliveries` | ✓ owner | latest 50 attempts |
 | GET/POST | `/api/api-keys` | ✓ session | list / create (returns the key once) |
 | DELETE | `/api/api-keys/{id}` | ✓ session | revoke |
 | GET/POST | `/api/workspaces` | ✓ | workspaces you belong to, each with your `role` |
@@ -107,7 +134,7 @@ A site can claim one hostname, and getting it live is three separate steps — e
 
 Once verified, that host serves the site's links at the root: `go.example.com/summer-sale` resolves the same link as `/r/summer-sale`, logs the same click, and honours the same expiry and password gate. The catch-all route is registered last in `routes/web.php` and only matches when the request's `Host` belongs to a *verified* domain, so `/`, `/up`, `/r/…` and `/qr/…` keep their meaning and an unverified or unknown host gets a 404. Links and QR codes report the branded address through their `short_url`.
 
-All lookups go through `Support\DohResolver` (DNS over HTTPS, `DNS_OVER_HTTPS_URL`) rather than the system resolver: the names are customer-supplied, and a nameserver that never answers would otherwise hold a PHP worker for as long as the resolver cares to wait. Every lookup has a 3 s timeout, and `verify`/`check` are throttled. Tests fake the HTTP layer, so none touch the network.
+All lookups go through `Support\DohResolver` (DNS over HTTPS, `DNS_OVER_HTTPS_URL`) rather than the system resolver: the names are customer-supplied, and a nameserver that never answers would otherwise hold a PHP worker for as long as the resolver cares to wait. Every lookup has a 3 s timeout, and `verify`/`check` are throttled. The HTTPS probe in `check` requests a host the customer typed in, so it goes through the same `OutboundUrlGuard` as webhooks (refused if it leads into a private network, pinned to the address that was checked, no redirects) — otherwise "is my domain ready?" would double as a way to ask the server what answers on `/up` inside its own network. Tests fake the HTTP layer, so none touch the network.
 
 `check` makes the app request itself once a domain points at it, so it needs more than one server worker. `docker/railway-start.sh` starts `artisan serve` with four (`PHP_CLI_SERVER_WORKERS`, which Laravel only honours together with `--no-reload`); with PHP's default single-process server the probe waits out its timeout and always reports no HTTPS.
 
@@ -133,7 +160,7 @@ Rows are validated individually and capped at 1000 per file — a bad row is ski
 vendor/bin/phpunit
 ```
 
-164 Feature/Unit tests — auth flow, ownership boundaries (cross-user 403s, demo-account write blocks), the redirect+click-logging path, analytics aggregation, custom-domain verification and host-based routing. `phpunit.xml` runs against an in-memory SQLite database, so no service container/setup needed.
+293 Feature/Unit tests — auth flow, ownership boundaries (cross-user 403s, demo-account write blocks), the redirect+click-logging path, analytics aggregation, custom-domain verification and host-based routing. `phpunit.xml` runs against an in-memory SQLite database, so no service container/setup needed.
 
 ```bash
 vendor/bin/pint          # check code style
@@ -147,10 +174,12 @@ app/
   Actions/          RecordLinkClick - the redirect endpoint's core logic
   Http/Controllers/
   Http/Requests/     Validation + authorization (FormRequest::authorize())
-  Enums/            WorkspaceRole
+  Enums/            WorkspaceRole, WebhookEvent
+  Jobs/             DeliverWebhook
+  Observers/        LinkObserver - turns link changes into webhook events
   Models/            User, Workspace, Site, Link, Click, Domain
   Policies/          Role checks (Workspace, Site, Link, Domain)
-  Support/           UserAgentParser, ClientIp, ApiKeyScope, DohResolver, DnsTxtLookup, DomainProbe - small helpers; the DNS ones are test seams
+  Support/           UserAgentParser, ClientIp, ApiKeyScope, OutboundUrlGuard, WebhookSender/Dispatcher/Signature, DohResolver, DnsTxtLookup, DomainProbe - small helpers; the DNS ones are test seams
 database/
   migrations/
   seeders/           DemoUserSeeder, DemoDataSeeder (idempotent, run on every deploy)

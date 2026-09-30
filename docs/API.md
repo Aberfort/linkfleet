@@ -153,6 +153,163 @@ One domain per site. Getting it live is three checked steps: prove ownership (a 
 | `POST /api/domains/{domain}/check` | `{ target, dns, https }` — is it wired up yet |
 | `DELETE /api/domains/{domain}` | |
 
+## Webhooks
+
+A webhook tells another system when something happens to a link — a new link, an edit, a click — by sending it an HTTP `POST` with a signed JSON body. Set them up per workspace, from the dashboard (**Workspaces → Вебхуки**) or the API below. Only workspace owners can see or change them: an address often carries a token, and the delivery log keeps every payload that was sent.
+
+### Events
+
+| Event | When |
+|---|---|
+| `link.created` | A link is created — including every row of a CSV import |
+| `link.updated` | A link's address, password, expiry or on/off state changes |
+| `link.deleted` | A link is deleted. Deleting a whole site or workspace removes its links without announcing each one |
+| `link.clicked` | Someone opens a short link. One event per click, so this one can be busy |
+| `ping` | Only from the **Тест** button, to check your endpoint |
+
+Every request is a `POST` with `Content-Type: application/json` and this envelope:
+
+```json
+{
+  "id": "evt_0b5e9f6a-6d0c-4f6e-a2a1-3c8b1d0f9a11",
+  "type": "link.clicked",
+  "created_at": "2026-09-30T09:18:42+00:00",
+  "workspace_id": 4,
+  "data": {
+    "link": {
+      "id": 71,
+      "site_id": 12,
+      "short_code": "spring",
+      "short_url": "https://go.example.com/spring",
+      "target_url": "https://example.com/spring-sale",
+      "is_active": true,
+      "clicks_count": 1043,
+      "expires_at": null,
+      "has_password": false,
+      "created_at": "2026-09-01T08:00:00+00:00",
+      "updated_at": "2026-09-30T09:18:42+00:00"
+    },
+    "click": {
+      "occurred_at": "2026-09-30T09:18:42+00:00",
+      "referrer": "twitter.com",
+      "browser": "Mobile Safari",
+      "browser_version": "17.0",
+      "platform": "iOS",
+      "device_type": "mobile"
+    }
+  }
+}
+```
+
+`data.click` is present only on `link.clicked`. The visitor's IP address is never included — not even hashed — and the referrer is the host only. We may add fields to these objects; we will not rename or remove them.
+
+The same event has the same `id` on every retry and for every webhook that receives it, so use `id` to ignore duplicates.
+
+### Verifying a request
+
+Anyone who learns your endpoint's address can post to it, so check the signature before trusting a request. Each one carries:
+
+```
+LinkFleet-Signature: t=1790759636,v1=bc4c3b5b68085c2f6b94ed73ede570bb53b21ac6a198ad759a1b0ba0510efbf2
+LinkFleet-Event: link.clicked
+LinkFleet-Delivery: evt_0b5e9f6a-6d0c-4f6e-a2a1-3c8b1d0f9a11
+```
+
+`v1` is the hex HMAC-SHA256 of `"<t>.<raw request body>"`, keyed with your webhook's secret (`whsec_…`, shown once when you create the webhook or replace its secret). Three rules make it safe:
+
+- Sign the **raw bytes** you received. Parsing the JSON and re-serialising it changes the bytes and the signature will not match.
+- Compare in **constant time**.
+- Reject a `t` more than a few minutes away from your clock, so a captured request cannot be replayed later.
+
+Return `2xx` as soon as you have verified and stored the event, and do slow work afterwards.
+
+**Node**
+
+```js
+import crypto from 'node:crypto';
+
+export function verify(header, rawBody, secret, toleranceSeconds = 300) {
+  const parts = Object.fromEntries(header.split(',').map((p) => p.trim().split('=', 2)));
+  const { t, v1 } = parts;
+  if (!t || !v1 || Math.abs(Date.now() / 1000 - Number(t)) > toleranceSeconds) return false;
+
+  const expected = crypto.createHmac('sha256', secret).update(`${t}.`).update(rawBody).digest('hex');
+  const a = Buffer.from(expected);
+  const b = Buffer.from(v1);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+```
+
+**PHP**
+
+```php
+function verify(string $header, string $rawBody, string $secret, int $tolerance = 300): bool
+{
+    $parts = [];
+    foreach (explode(',', $header) as $part) {
+        [$key, $value] = array_pad(explode('=', trim($part), 2), 2, '');
+        $parts[$key] = $value;
+    }
+
+    if (! isset($parts['t'], $parts['v1']) || ! ctype_digit($parts['t'])
+        || abs(time() - (int) $parts['t']) > $tolerance) {
+        return false;
+    }
+
+    return hash_equals(hash_hmac('sha256', $parts['t'].'.'.$rawBody, $secret), $parts['v1']);
+}
+```
+
+**Python**
+
+```python
+import hashlib, hmac, time
+
+def verify(header: str, raw_body: bytes, secret: str, tolerance: int = 300) -> bool:
+    try:
+        parts = dict(p.strip().split("=", 1) for p in header.split(","))
+        t, v1 = parts["t"], parts["v1"]
+        if abs(time.time() - int(t)) > tolerance:
+            return False
+    except (KeyError, ValueError):
+        return False
+    expected = hmac.new(secret.encode(), f"{t}.".encode() + raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, v1)
+```
+
+### Delivery and retries
+
+- A delivery succeeds on any `2xx`. LinkFleet waits up to 10 seconds for the answer, does **not** follow redirects (a `3xx` counts as a failure), and reads at most 1 MB of the reply.
+- A `5xx`, `408`, `429`, a timeout or a refused connection is retried, up to **5 attempts** in total, waiting 10 seconds, 1 minute, 5 minutes and 30 minutes between them.
+- Any other `4xx` is final — repeating it would not change the answer. Fix the endpoint and use **Тест**; events that failed for good are not replayed.
+- Deliveries are sent by a background worker, never inside the request that caused them, so a slow endpoint cannot slow down a redirect.
+- The last 50 attempts per webhook are visible in the dashboard and at `GET /api/webhooks/{webhook}/deliveries`, with the payload, the status, the error and the start of your reply.
+
+A workspace can have up to 10 webhooks.
+
+### Where a webhook may point
+
+Because your endpoint is called *by LinkFleet's server*, addresses that lead into a private network are refused — otherwise a webhook could be aimed at things only the server can reach. That means:
+
+- `https` only, with a hostname or a public IP address — no credentials in the URL;
+- nothing that resolves to a private, loopback, link-local or otherwise reserved address (`10.x`, `192.168.x`, `127.x`, `169.254.x`, IPv6 equivalents, `localhost`, `*.internal`, `*.local`). One such answer among several is enough to refuse the name;
+- the address is checked when you save it **and again on every delivery**, and the connection goes to the address that was checked, so changing DNS afterwards does not help.
+
+Self-hosting and want to notify a service on your own network? Set `WEBHOOKS_ALLOW_PRIVATE_TARGETS=true`. That lifts the address rule and allows plain `http`; the URL-format rules stay.
+
+### Managing webhooks
+
+Owners only.
+
+| | |
+|---|---|
+| `GET /api/workspaces/{workspace}/webhooks` | Each webhook, with `latest_delivery` |
+| `POST /api/workspaces/{workspace}/webhooks` | `{ "url", "events": [...], "is_active"? }` — the response includes `secret`, **once** |
+| `GET` / `PUT` / `DELETE /api/webhooks/{webhook}` | `PUT` takes any of `url`, `events`, `is_active` |
+| `POST /api/webhooks/{webhook}/rotate-secret` | New secret, shown once; the old one stops working immediately |
+| `POST /api/webhooks/{webhook}/test` | Sends a `ping` now and returns the delivery |
+| `GET /api/webhooks/{webhook}/deliveries` | The last 50 attempts, newest first |
+
 ## API keys
 
 Managed from a signed-in session only — the dashboard's **API-ключі** page, or these endpoints with a session token.

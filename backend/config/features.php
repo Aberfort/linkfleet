@@ -21,6 +21,16 @@ return [
     // system resolver so every lookup has a hard timeout (see DohResolver).
     'doh_url' => env('DNS_OVER_HTTPS_URL', 'https://cloudflare-dns.com/dns-query'),
 
+    'webhooks' => [
+        // Webhooks make this server call addresses customers type in. By
+        // default only public https endpoints are allowed, so a webhook
+        // cannot be aimed at the cloud metadata service or the internal
+        // network. A self-hoster who wants to notify a service on their own
+        // LAN turns this on (it also permits plain http).
+        'allow_private_targets' => (bool) env('WEBHOOKS_ALLOW_PRIVATE_TARGETS', false),
+        'max_per_workspace' => 10,
+    ],
+
     // Optional: seeds a verified custom domain onto the demo account's Docs
     // site, so a public demo can show a branded address working for real.
     'demo_domain' => env('DEMO_DOMAIN'),

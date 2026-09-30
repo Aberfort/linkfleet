@@ -7,10 +7,13 @@ use App\Support\DohResolver;
 use App\Support\DomainProbe;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
+use Tests\Concerns\FakesDns;
 use Tests\TestCase;
 
 class DnsLookupTest extends TestCase
 {
+    use FakesDns;
+
     private const DOH = 'https://doh.test/dns-query';
 
     protected function setUp(): void
@@ -115,6 +118,10 @@ class DnsLookupTest extends TestCase
 
     public function test_https_is_ready_only_when_the_host_answers_its_health_route(): void
     {
+        $this->fakeDns([
+            'ok.example.com' => ['A' => ['203.0.114.7']],
+            'bad.example.com' => ['A' => ['203.0.114.8']],
+        ]);
         Http::fake(['https://ok.example.com/up' => Http::response('', 200), 'https://bad.example.com/up' => Http::response('', 502)]);
 
         $probe = app(DomainProbe::class);
@@ -123,8 +130,43 @@ class DnsLookupTest extends TestCase
         $this->assertFalse($probe->servesOverHttps('bad.example.com'));
     }
 
+    public function test_the_https_probe_connects_to_the_checked_address_and_does_not_follow_redirects(): void
+    {
+        $this->fakeDns(['ok.example.com' => ['A' => ['203.0.114.7']]]);
+        $seen = null;
+        Http::fake(function ($request, array $options) use (&$seen) {
+            $seen = $options;
+
+            return Http::response('', 200);
+        });
+
+        app(DomainProbe::class)->servesOverHttps('ok.example.com');
+
+        $this->assertSame(['ok.example.com:443:203.0.114.7'], $seen['curl'][CURLOPT_RESOLVE]);
+        $this->assertFalse($seen['allow_redirects']);
+    }
+
+    public function test_the_https_probe_will_not_knock_on_a_host_that_leads_into_a_private_network(): void
+    {
+        // The domain is "verified" and points wherever its owner likes, so
+        // "does /up answer?" must not become a way to scan the inside.
+        $this->fakeDns([
+            'sneaky.example.com' => ['A' => ['10.0.0.5']],
+            'meta.example.com' => ['A' => ['169.254.169.254']],
+        ]);
+        Http::fake();
+
+        $probe = app(DomainProbe::class);
+
+        $this->assertFalse($probe->servesOverHttps('sneaky.example.com'));
+        $this->assertFalse($probe->servesOverHttps('meta.example.com'));
+        $this->assertFalse($probe->servesOverHttps('127.0.0.1'));
+        Http::assertNothingSent();
+    }
+
     public function test_a_missing_certificate_reads_as_not_ready(): void
     {
+        $this->fakeDns(['go.example.com' => ['A' => ['203.0.114.7']]]);
         Http::fake(fn () => throw new ConnectionException('SSL certificate problem'));
 
         $this->assertFalse(app(DomainProbe::class)->servesOverHttps('go.example.com'));

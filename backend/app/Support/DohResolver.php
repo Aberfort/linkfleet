@@ -15,13 +15,13 @@ use Throwable;
 class DohResolver
 {
     /** Record type numbers, as they appear in a DoH JSON answer. */
-    private const TYPES = ['A' => 1, 'CNAME' => 5, 'TXT' => 16];
+    private const TYPES = ['A' => 1, 'CNAME' => 5, 'TXT' => 16, 'AAAA' => 28];
 
     /**
      * The data of every $type record at $name; empty when the name doesn't
      * exist, has none of that type, or the lookup failed or timed out.
      *
-     * @param  'A'|'CNAME'|'TXT'  $type
+     * @param  'A'|'AAAA'|'CNAME'|'TXT'  $type
      * @return array<int, string>
      */
     public function lookup(string $name, string $type): array

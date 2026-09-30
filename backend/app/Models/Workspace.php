@@ -29,6 +29,11 @@ class Workspace extends Model
         return $this->hasMany(Site::class);
     }
 
+    public function webhooks(): HasMany
+    {
+        return $this->hasMany(Webhook::class);
+    }
+
     public function ownerCount(): int
     {
         return $this->members()->wherePivot('role', WorkspaceRole::Owner->value)->count();

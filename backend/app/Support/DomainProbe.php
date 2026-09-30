@@ -13,7 +13,7 @@ use Throwable;
  */
 class DomainProbe
 {
-    public function __construct(private DohResolver $resolver) {}
+    public function __construct(private DohResolver $resolver, private OutboundUrlGuard $guard) {}
 
     /**
      * Whether $host's DNS leads to $target, either through a CNAME or by
@@ -39,11 +39,23 @@ class DomainProbe
      * Whether https://$host/up answers with a valid certificate. Certificate
      * verification stays on: a self-signed or missing certificate is exactly
      * the "not ready" state this is meant to report.
+     *
+     * The host is one a customer typed in, so this makes the same kind of
+     * request a webhook does and gets the same protection: refused if it
+     * leads into a private network, connected to the address that was
+     * checked, no redirects. Without that, "is my domain ready?" would be a
+     * way to ask the server whether something internal answers on /up.
      */
     public function servesOverHttps(string $host): bool
     {
         try {
-            return Http::timeout(5)->get("https://{$host}/up")->successful();
+            $target = $this->guard->resolve("https://{$host}/up");
+
+            return Http::timeout(5)
+                ->withoutRedirecting()
+                ->withOptions(['curl' => [CURLOPT_RESOLVE => [$target->curlResolve()]]])
+                ->get($target->url)
+                ->successful();
         } catch (Throwable) {
             return false;
         }

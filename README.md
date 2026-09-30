@@ -21,6 +21,7 @@ A self-hosted redirect-link manager with click analytics — group your links by
 - **QR code per link**, generated on the fly and public, so it can be embedded straight into a page or a printout.
 - **CSV import** for moving a batch of links in at once, with per-row errors reported back instead of failing the whole file.
 - **API keys** for scripts and integrations: read-only or read-write, optionally pinned to a single workspace, throttled per key, and shown only once. The [API reference](docs/API.md) covers the rest.
+- **Webhooks** for new links, edits, deletions and clicks: signed with HMAC-SHA256, retried with backoff, with a per-webhook delivery log. Because the server calls addresses users type in, the SSRF defence around them is built and tested against hostile inputs rather than assumed — see the [backend README](backend/README.md#webhooks).
 - **Custom domains**, verified by a DNS TXT record. Once verified, that host serves the site's links at the root — `go.example.com/summer-sale` — with the same click logging, expiry and password gate, and copied links and QR codes switch to the branded address. The dashboard walks each domain through ownership → DNS → HTTPS and reports which step is still missing.
 
 ## Architecture
@@ -97,6 +98,7 @@ php artisan key:generate
 touch database/database.sqlite
 php artisan migrate --seed
 php artisan serve
+php artisan queue:work   # in another terminal: sends webhook deliveries
 ```
 
 ```bash
@@ -140,6 +142,7 @@ Each half also has its own README with more detail: [backend/README.md](backend/
 
 - No geolocation on clicks — deliberately out of scope (see [`app/Support/ClientIp.php`](backend/app/Support/ClientIp.php)'s comment): it would mean either a paid IP-geo API or bundling/hosting a GeoIP database, neither of which felt worth the added infrastructure for what this project is.
 - Analytics window is a fixed 30 days; no custom date-range picker yet.
+- Webhooks are sent by a single queue worker by default and are never switched off automatically when an endpoint keeps failing; `link.deleted` is not sent per link when a whole site or workspace is deleted.
 - Members are added by the email of an account that already exists; there are no emailed invitations (the public demo has no mail pipeline, and registration is closed there anyway).
 - Custom domains are checked, not provisioned: LinkFleet verifies ownership and reports whether DNS and HTTPS are ready, but issuing the certificate and registering the host with the platform (a Railway custom domain, or a Caddy/nginx block on a VPS) is done outside the app. `short_code` is also still globally unique, so two sites can't both own `summer-sale`.
 

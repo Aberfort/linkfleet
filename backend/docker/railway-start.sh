@@ -12,6 +12,20 @@ php artisan migrate --force
 # the first one.
 php artisan db:seed --force
 
+# Webhook deliveries (and anything else queued) are sent by a worker beside
+# the web server, never inside a request: a slow receiver must not slow down
+# a redirect. The loop restarts the worker if it dies, and --max-time recycles
+# it hourly so a long-lived PHP process cannot creep in memory. Raise
+# QUEUE_WORKERS if deliveries queue up faster than one worker sends them.
+for _ in $(seq 1 "${QUEUE_WORKERS:-1}"); do
+    (
+        while true; do
+            php artisan queue:work --sleep=2 --max-time=3600 || true
+            sleep 2
+        done
+    ) &
+done
+
 # php's built-in server handles one request at a time, which stalls anything
 # that has this app call itself: POST /api/domains/{id}/check probes
 # https://<customer domain>/up, and once that domain points here the probe
