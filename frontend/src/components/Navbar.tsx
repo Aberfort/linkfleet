@@ -43,6 +43,9 @@ function Navbar({ registrationEnabled }: NavbarProps) {
                         <Button color="inherit" component={RouterLink} to="/workspaces">
                             Workspaces
                         </Button>
+                        <Button color="inherit" component={RouterLink} to="/settings/api-keys">
+                            API-ключі
+                        </Button>
                         {user.is_demo && (
                             <Chip
                                 label="Демо (лише читання)"

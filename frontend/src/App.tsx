@@ -14,6 +14,7 @@ import LinkFormPage from './pages/LinkFormPage';
 import SiteDomainPage from './pages/SiteDomainPage';
 import WorkspacesPage from './pages/WorkspacesPage';
 import WorkspaceMembersPage from './pages/WorkspaceMembersPage';
+import ApiKeysPage from './pages/ApiKeysPage';
 import { fetchAppConfig } from './api/config';
 
 // @mui/x-charts is the single largest dependency in the app - keeping it
@@ -52,6 +53,14 @@ function AppRoutes({ registrationEnabled }: { registrationEnabled: boolean }) {
                 element={
                     <PrivateRoute>
                         <SitesPage />
+                    </PrivateRoute>
+                }
+            />
+            <Route
+                path="/settings/api-keys"
+                element={
+                    <PrivateRoute>
+                        <ApiKeysPage />
                     </PrivateRoute>
                 }
             />

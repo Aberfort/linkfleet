@@ -26,6 +26,23 @@ export interface Member {
     joined_at: string;
 }
 
+export type ApiKeyAccess = 'read' | 'write';
+
+export interface ApiKey {
+    id: number;
+    name: string;
+    access: ApiKeyAccess;
+    /** Null when the key spans every workspace of its owner. */
+    workspace_id: number | null;
+    last_used_at: string | null;
+    created_at: string;
+}
+
+/** Returned once, on creation - the only time the secret is available. */
+export interface CreatedApiKey extends ApiKey {
+    token: string;
+}
+
 export interface Site {
     id: number;
     workspace_id: number;
