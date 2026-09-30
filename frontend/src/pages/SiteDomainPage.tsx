@@ -30,6 +30,7 @@ import { getDomain, attachDomain, verifyDomain, checkDomain, detachDomain } from
 import { fetchAppConfig } from '../api/config';
 import { errorMessage, validationErrors } from '../api/errors';
 import { publicBaseUrl } from '../api/client';
+import { isOwner } from '../utils/roles';
 import type { Domain, DomainCheck, Site } from '../types';
 
 const shortLinkHost = new URL(publicBaseUrl).host;
@@ -72,6 +73,8 @@ function SiteDomainPage() {
     const isDemo = Boolean(user?.is_demo);
 
     const [site, setSite] = useState<Site | null>(null);
+    // Where a brand resolves is the owner's call. Members can still read it and run the connection check.
+    const cannotManage = isDemo || !isOwner(site?.role);
     const [domain, setDomain] = useState<Domain | null>(null);
     const [loading, setLoading] = useState(true);
     const [verifying, setVerifying] = useState(false);
@@ -177,6 +180,11 @@ function SiteDomainPage() {
                     Демо-акаунт лише для читання — підключити домен не можна.
                 </Alert>
             )}
+            {!isDemo && site && !isOwner(site.role) && (
+                <Alert severity="info" sx={{ mb: 3 }}>
+                    Змінювати домен може лише власник workspace.
+                </Alert>
+            )}
 
             {!domain && (
                 <Paper sx={{ p: 3 }}>
@@ -209,13 +217,13 @@ function SiteDomainPage() {
                                         (touched.host && errors.host) ||
                                         'Піддомен, який ти контролюєш. Без протоколу й шляху.'
                                     }
-                                    disabled={isDemo}
+                                    disabled={cannotManage}
                                 />
                                 <Button
                                     type="submit"
                                     variant="contained"
                                     sx={{ mt: 2 }}
-                                    disabled={isSubmitting || isDemo}
+                                    disabled={isSubmitting || cannotManage}
                                 >
                                     Додати домен
                                 </Button>
@@ -313,7 +321,7 @@ function SiteDomainPage() {
 
                     <Stack direction="row" spacing={1}>
                         {!domain.is_verified && (
-                            <Button variant="contained" onClick={handleVerify} disabled={verifying || isDemo}>
+                            <Button variant="contained" onClick={handleVerify} disabled={verifying || cannotManage}>
                                 {verifying ? 'Перевіряю...' : 'Перевірити'}
                             </Button>
                         )}
@@ -322,7 +330,7 @@ function SiteDomainPage() {
                                 {checking ? 'Перевіряю...' : 'Перевірити підключення'}
                             </Button>
                         )}
-                        <Button color="error" onClick={handleDetach} disabled={isDemo}>
+                        <Button color="error" onClick={handleDetach} disabled={cannotManage}>
                             Відключити
                         </Button>
                     </Stack>

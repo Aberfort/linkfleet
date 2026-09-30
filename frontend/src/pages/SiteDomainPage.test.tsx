@@ -19,7 +19,9 @@ vi.mock('react-toastify', () => ({
 
 const site: Site = {
     id: 1,
-    user_id: 1,
+    workspace_id: 1,
+    workspace: { id: 1, name: 'Acme' },
+    role: 'owner',
     name: 'My Site',
     domain: 'example.com',
     description: null,
@@ -169,6 +171,26 @@ describe('SiteDomainPage', () => {
             register: vi.fn(),
             logout: vi.fn(),
         });
+        vi.mocked(domainsApi.getDomain).mockResolvedValue(null);
+
+        renderPage();
+
+        expect(await screen.findByRole('button', { name: 'Додати домен' })).toBeDisabled();
+    });
+
+    it('leaves domain changes to owners but still lets an editor read and check it', async () => {
+        vi.mocked(sitesApi.getSite).mockResolvedValue({ ...site, role: 'editor' });
+        vi.mocked(domainsApi.getDomain).mockResolvedValue(verified);
+
+        renderPage();
+
+        expect(await screen.findByRole('button', { name: 'Перевірити підключення' })).toBeEnabled();
+        expect(screen.getByRole('button', { name: 'Відключити' })).toBeDisabled();
+        expect(screen.getByText('Змінювати домен може лише власник workspace.')).toBeInTheDocument();
+    });
+
+    it('does not let an editor attach a domain', async () => {
+        vi.mocked(sitesApi.getSite).mockResolvedValue({ ...site, role: 'editor' });
         vi.mocked(domainsApi.getDomain).mockResolvedValue(null);
 
         renderPage();

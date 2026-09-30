@@ -37,15 +37,21 @@ function Navbar({ registrationEnabled }: NavbarProps) {
                     <Typography variant="body1">Завантаження...</Typography>
                 ) : user ? (
                     <>
+                        <Button color="inherit" component={RouterLink} to="/sites">
+                            Сайти
+                        </Button>
+                        <Button color="inherit" component={RouterLink} to="/workspaces">
+                            Workspaces
+                        </Button>
                         {user.is_demo && (
                             <Chip
                                 label="Демо (лише читання)"
                                 color="warning"
                                 size="small"
-                                sx={{ mr: 2 }}
+                                sx={{ mx: 2 }}
                             />
                         )}
-                        <Typography variant="body1" sx={{ mr: 2 }}>
+                        <Typography variant="body1" sx={{ mx: 2 }}>
                             Привіт, {user.name}!
                         </Typography>
                         <Button color="inherit" onClick={handleLogout}>

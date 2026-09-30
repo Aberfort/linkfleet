@@ -2,6 +2,8 @@ import api from './client';
 import type { Site } from '../types';
 
 export interface SitePayload {
+    /** Required when creating; a site never moves between workspaces. */
+    workspace_id?: number;
     name: string;
     domain?: string;
     description?: string;

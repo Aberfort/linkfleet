@@ -5,9 +5,33 @@ export interface User {
     is_demo: boolean;
 }
 
+export type WorkspaceRole = 'owner' | 'editor' | 'viewer';
+
+export interface Workspace {
+    id: number;
+    name: string;
+    /** The signed-in user's role here. */
+    role: WorkspaceRole;
+    members_count?: number;
+    sites_count?: number;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface Member {
+    user_id: number;
+    name: string;
+    email: string;
+    role: WorkspaceRole;
+    joined_at: string;
+}
+
 export interface Site {
     id: number;
-    user_id: number;
+    workspace_id: number;
+    workspace?: { id: number; name: string };
+    /** The signed-in user's role in this site's workspace. */
+    role: WorkspaceRole;
     name: string;
     domain: string | null;
     description: string | null;

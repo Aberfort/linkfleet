@@ -23,6 +23,7 @@ import {
     DialogContent,
     DialogActions,
     TextField,
+    MenuItem,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -31,18 +32,22 @@ import BarChartIcon from '@mui/icons-material/BarChart';
 import PublicIcon from '@mui/icons-material/Public';
 import { useAuth } from '../contexts/useAuth';
 import { listSites, createSite, updateSite, deleteSite } from '../api/sites';
+import { listWorkspaces } from '../api/workspaces';
 import { errorMessage, validationErrors } from '../api/errors';
-import type { Site } from '../types';
+import { canEdit, isOwner } from '../utils/roles';
+import type { Site, Workspace } from '../types';
 
 interface FormValues {
+    workspace_id: number | '';
     name: string;
     domain: string;
     description: string;
 }
 
-const emptyValues: FormValues = { name: '', domain: '', description: '' };
+const emptyValues: FormValues = { workspace_id: '', name: '', domain: '', description: '' };
 
 const validationSchema = Yup.object({
+    workspace_id: Yup.number().required('Оберіть workspace'),
     name: Yup.string().required("Назва є обов'язковою").max(255),
     domain: Yup.string().max(255),
     description: Yup.string().max(1000),
@@ -51,11 +56,14 @@ const validationSchema = Yup.object({
 function SitesPage() {
     const { user } = useAuth();
     const [sites, setSites] = useState<Site[]>([]);
+    const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
     const [loading, setLoading] = useState(true);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingSite, setEditingSite] = useState<Site | null>(null);
 
     const isDemo = Boolean(user?.is_demo);
+    // A site can only be created where the user may edit.
+    const writable = workspaces.filter((w) => canEdit(w.role));
 
     useEffect(() => {
         fetchSites();
@@ -64,7 +72,9 @@ function SitesPage() {
     const fetchSites = async () => {
         setLoading(true);
         try {
-            setSites(await listSites());
+            const [siteList, workspaceList] = await Promise.all([listSites(), listWorkspaces()]);
+            setSites(siteList);
+            setWorkspaces(workspaceList);
         } catch (error) {
             toast.error(errorMessage(error, 'Помилка при завантаженні сайтів.'));
         } finally {
@@ -99,13 +109,15 @@ function SitesPage() {
         values: FormValues,
         { setSubmitting, setErrors }: { setSubmitting: (v: boolean) => void; setErrors: (e: Record<string, string>) => void }
     ) => {
+        const { workspace_id, ...fields } = values;
+
         try {
             if (editingSite) {
-                const updated = await updateSite(editingSite.id, values);
+                const updated = await updateSite(editingSite.id, fields);
                 setSites((prev) => prev.map((s) => (s.id === updated.id ? { ...s, ...updated } : s)));
                 toast.success('Сайт оновлено.');
             } else {
-                const created = await createSite(values);
+                const created = await createSite({ ...fields, workspace_id: Number(workspace_id) });
                 setSites((prev) => [created, ...prev]);
                 toast.success('Сайт додано.');
             }
@@ -122,7 +134,12 @@ function SitesPage() {
         <Container maxWidth="lg" sx={{ mt: 4 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Typography variant="h4">Сайти</Typography>
-                <Button variant="contained" color="primary" onClick={openCreateDialog} disabled={isDemo}>
+                <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={openCreateDialog}
+                    disabled={isDemo || writable.length === 0}
+                >
                     Додати сайт
                 </Button>
             </Box>
@@ -143,6 +160,7 @@ function SitesPage() {
                         <TableHead>
                             <TableRow>
                                 <TableCell>Назва</TableCell>
+                                <TableCell>Workspace</TableCell>
                                 <TableCell>Домен</TableCell>
                                 <TableCell>Опис</TableCell>
                                 <TableCell align="right">Посилань</TableCell>
@@ -153,6 +171,7 @@ function SitesPage() {
                             {sites.map((site) => (
                                 <TableRow key={site.id}>
                                     <TableCell>{site.name}</TableCell>
+                                    <TableCell>{site.workspace?.name}</TableCell>
                                     <TableCell>{site.domain}</TableCell>
                                     <TableCell>{site.description}</TableCell>
                                     <TableCell align="right">{site.links_count ?? 0}</TableCell>
@@ -173,12 +192,12 @@ function SitesPage() {
                                             </IconButton>
                                         </Tooltip>
                                         <Tooltip title="Редагувати">
-                                            <IconButton onClick={() => openEditDialog(site)} disabled={isDemo}>
+                                            <IconButton onClick={() => openEditDialog(site)} disabled={isDemo || !canEdit(site.role)}>
                                                 <EditIcon fontSize="small" />
                                             </IconButton>
                                         </Tooltip>
                                         <Tooltip title="Видалити">
-                                            <IconButton onClick={() => handleDelete(site)} disabled={isDemo}>
+                                            <IconButton onClick={() => handleDelete(site)} disabled={isDemo || !isOwner(site.role)}>
                                                 <DeleteIcon fontSize="small" />
                                             </IconButton>
                                         </Tooltip>
@@ -196,11 +215,12 @@ function SitesPage() {
                     initialValues={
                         editingSite
                             ? {
+                                  workspace_id: editingSite.workspace_id,
                                   name: editingSite.name,
                                   domain: editingSite.domain ?? '',
                                   description: editingSite.description ?? '',
                               }
-                            : emptyValues
+                            : { ...emptyValues, workspace_id: writable[0]?.id ?? '' }
                     }
                     validationSchema={validationSchema}
                     onSubmit={onSubmit}
@@ -209,6 +229,25 @@ function SitesPage() {
                         <Form>
                             <DialogTitle>{editingSite ? 'Редагувати сайт' : 'Додати сайт'}</DialogTitle>
                             <DialogContent>
+                                {!editingSite && writable.length > 1 && (
+                                    <TextField
+                                        select
+                                        fullWidth
+                                        margin="normal"
+                                        label="Workspace"
+                                        name="workspace_id"
+                                        value={values.workspace_id}
+                                        onChange={handleChange}
+                                        error={touched.workspace_id && Boolean(errors.workspace_id)}
+                                        helperText={touched.workspace_id && errors.workspace_id}
+                                    >
+                                        {writable.map((workspace) => (
+                                            <MenuItem key={workspace.id} value={workspace.id}>
+                                                {workspace.name}
+                                            </MenuItem>
+                                        ))}
+                                    </TextField>
+                                )}
                                 <TextField
                                     autoFocus
                                     fullWidth

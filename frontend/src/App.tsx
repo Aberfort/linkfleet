@@ -12,6 +12,8 @@ import SitesPage from './pages/SitesPage';
 import SiteLinksPage from './pages/SiteLinksPage';
 import LinkFormPage from './pages/LinkFormPage';
 import SiteDomainPage from './pages/SiteDomainPage';
+import WorkspacesPage from './pages/WorkspacesPage';
+import WorkspaceMembersPage from './pages/WorkspaceMembersPage';
 import { fetchAppConfig } from './api/config';
 
 // @mui/x-charts is the single largest dependency in the app - keeping it
@@ -50,6 +52,22 @@ function AppRoutes({ registrationEnabled }: { registrationEnabled: boolean }) {
                 element={
                     <PrivateRoute>
                         <SitesPage />
+                    </PrivateRoute>
+                }
+            />
+            <Route
+                path="/workspaces"
+                element={
+                    <PrivateRoute>
+                        <WorkspacesPage />
+                    </PrivateRoute>
+                }
+            />
+            <Route
+                path="/workspaces/:workspaceId/members"
+                element={
+                    <PrivateRoute>
+                        <WorkspaceMembersPage />
                     </PrivateRoute>
                 }
             />

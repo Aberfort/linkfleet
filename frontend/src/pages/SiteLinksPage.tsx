@@ -40,6 +40,7 @@ import { listLinks, deleteLink, toggleLink, importLinks } from '../api/links';
 import { errorMessage } from '../api/errors';
 import { publicBaseUrl } from '../api/client';
 import { shortLabel } from '../utils/shortUrl';
+import { canEdit } from '../utils/roles';
 import type { Site, Link as LinkType } from '../types';
 
 function isExpired(link: LinkType): boolean {
@@ -61,6 +62,8 @@ function SiteLinksPage() {
 
     const isDemo = Boolean(user?.is_demo);
     const id = Number(siteId);
+    // The demo account is read-only everywhere; a viewer is read-only in this workspace.
+    const readOnly = isDemo || !canEdit(site?.role);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -171,7 +174,7 @@ function SiteLinksPage() {
                         variant="outlined"
                         startIcon={<UploadFileIcon />}
                         onClick={() => fileInputRef.current?.click()}
-                        disabled={isDemo}
+                        disabled={readOnly}
                     >
                         Імпорт CSV
                     </Button>
@@ -180,7 +183,7 @@ function SiteLinksPage() {
                         color="primary"
                         component={RouterLink}
                         to={`/sites/${id}/links/new`}
-                        disabled={isDemo}
+                        disabled={readOnly}
                     >
                         Додати посилання
                     </Button>
@@ -190,6 +193,11 @@ function SiteLinksPage() {
             {isDemo && (
                 <Alert severity="info" sx={{ mb: 2 }}>
                     Демо-акаунт лише для читання — створення, редагування та видалення вимкнені.
+                </Alert>
+            )}
+            {!isDemo && site && !canEdit(site.role) && (
+                <Alert severity="info" sx={{ mb: 2 }}>
+                    У цьому workspace у вас права лише на перегляд.
                 </Alert>
             )}
 
@@ -253,7 +261,7 @@ function SiteLinksPage() {
                                     </TableCell>
                                     <TableCell align="right">{link.clicks_count}</TableCell>
                                     <TableCell align="center">
-                                        {isDemo ? (
+                                        {readOnly ? (
                                             <Chip
                                                 size="small"
                                                 label={link.is_active ? 'Активне' : 'Вимкнене'}
@@ -285,13 +293,13 @@ function SiteLinksPage() {
                                             <IconButton
                                                 component={RouterLink}
                                                 to={`/links/${link.id}/edit`}
-                                                disabled={isDemo}
+                                                disabled={readOnly}
                                             >
                                                 <EditIcon fontSize="small" />
                                             </IconButton>
                                         </Tooltip>
                                         <Tooltip title="Видалити">
-                                            <IconButton onClick={() => handleDelete(link)} disabled={isDemo}>
+                                            <IconButton onClick={() => handleDelete(link)} disabled={readOnly}>
                                                 <DeleteIcon fontSize="small" />
                                             </IconButton>
                                         </Tooltip>

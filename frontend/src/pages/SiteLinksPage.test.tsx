@@ -15,7 +15,9 @@ vi.mock('react-toastify', () => ({ toast: { success: vi.fn(), error: vi.fn() } }
 
 const site: Site = {
     id: 1,
-    user_id: 1,
+    workspace_id: 1,
+    workspace: { id: 1, name: 'Acme' },
+    role: 'owner',
     name: 'My Site',
     domain: 'example.com',
     description: null,
@@ -153,5 +155,30 @@ describe('SiteLinksPage', () => {
 
         expect(await screen.findByLabelText('Захищене паролем')).toBeInTheDocument();
         expect(screen.getByLabelText(/Термін дії минув/)).toBeInTheDocument();
+    });
+
+    it('is read-only for a viewer of the workspace, without calling them a demo', async () => {
+        vi.mocked(sitesApi.getSite).mockResolvedValue({ ...site, role: 'viewer' });
+        vi.mocked(linksApi.listLinks).mockResolvedValue([link]);
+
+        renderPage();
+        await screen.findByText('/r/promo');
+
+        // A RouterLink styled as a button: disabled shows up as aria-disabled, not the disabled attribute.
+        expect(screen.getByRole('link', { name: 'Додати посилання' })).toHaveAttribute('aria-disabled', 'true');
+        expect(screen.getByText('У цьому workspace у вас права лише на перегляд.')).toBeInTheDocument();
+        expect(screen.queryByText(/Демо-акаунт/)).not.toBeInTheDocument();
+        // The toggle is replaced by a plain status chip.
+        expect(screen.getByText('Активне', { selector: 'span' })).toBeInTheDocument();
+    });
+
+    it('lets an editor add links', async () => {
+        vi.mocked(sitesApi.getSite).mockResolvedValue({ ...site, role: 'editor' });
+        vi.mocked(linksApi.listLinks).mockResolvedValue([link]);
+
+        renderPage();
+        await screen.findByText('/r/promo');
+
+        expect(screen.getByRole('link', { name: 'Додати посилання' })).not.toHaveAttribute('aria-disabled');
     });
 });
