@@ -53,9 +53,11 @@ const sourceNotes: Record<Billing['source'], string> = {
 function UsageMeter({ resource, billing }: { resource: LimitedResource; billing: Billing }) {
     const used = billing.usage[resource];
     const limit = billing.limits[resource];
-    const share = limit === null ? 0 : limit === 0 ? (used > 0 ? 100 : 0) : Math.min(100, (used / limit) * 100);
     const over = limit !== null && used > limit;
-    const full = limit !== null && used >= limit;
+    // A plan that simply does not include something (0) is not "full" of it.
+    const full = limit !== null && limit > 0 && used >= limit;
+    const share = limit === null ? 0 : limit === 0 ? 100 : Math.min(100, (used / limit) * 100);
+    const showBar = limit !== null && (limit > 0 || over);
 
     return (
         <Box>
@@ -65,7 +67,7 @@ function UsageMeter({ resource, billing }: { resource: LimitedResource; billing:
                     {used.toLocaleString('uk-UA')} / {limit === null ? '∞' : formatLimit(limit)}
                 </Typography>
             </Box>
-            {limit !== null && (
+            {showBar && (
                 <LinearProgress
                     variant="determinate"
                     value={share}

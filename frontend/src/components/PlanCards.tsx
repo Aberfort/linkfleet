@@ -43,14 +43,17 @@ function PlanCards({ plans, interval, prices, currentKey, action }: PlanCardsPro
                     >
                         <CardContent sx={{ flexGrow: 1 }}>
                             <Typography variant="h6">{plan.name}</Typography>
-                            <Typography variant="h4" sx={{ mt: 1, mb: 2, fontVariantNumeric: 'tabular-nums' }}>
+                            {/* One height for every card, so the lists below start on the same line. */}
+                            <Typography
+                                variant="h4"
+                                sx={{ mt: 1, mb: 2, minHeight: '3rem', display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', fontVariantNumeric: 'tabular-nums' }}
+                            >
                                 {!forSale ? (
                                     'Безкоштовно'
                                 ) : priceId && prices[priceId] ? (
                                     <>
                                         {prices[priceId]}
-                                        <Typography component="span" color="text.secondary">
-                                            {' '}
+                                        <Typography component="span" color="text.secondary" sx={{ ml: 0.75 }}>
                                             / {interval === 'yearly' ? 'рік' : 'міс'}
                                         </Typography>
                                     </>

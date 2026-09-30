@@ -153,6 +153,27 @@ describe('BillingPage', () => {
             expect(screen.getAllByRole('progressbar')).toHaveLength(2); // links has none
         });
 
+        it('draws no bar for something the plan simply does not include', async () => {
+            renderPage();
+            await screen.findByRole('heading', { level: 2, name: 'Free' });
+
+            // 12/25 links and 1/1 members have a bar; 0/0 domains is not "full", it is "not part of this plan".
+            expect(screen.getAllByRole('progressbar')).toHaveLength(2);
+            expect(screen.queryByRole('progressbar', { name: /Власні домени/ })).not.toBeInTheDocument();
+        });
+
+        it('does draw one for domains that exist on a plan that has none', async () => {
+            vi.mocked(billingApi.getBilling).mockResolvedValue({
+                ...free,
+                usage: { links: 12, domains: 2, members: 1 },
+                over_limit: ['domains'],
+            });
+
+            renderPage();
+
+            expect(await screen.findByRole('progressbar', { name: /Власні домени: використано 2 з 0/ })).toBeInTheDocument();
+        });
+
         it('marks the current plan and offers the others', async () => {
             renderPage();
 
