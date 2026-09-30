@@ -9,6 +9,7 @@ use App\Models\Link;
 use App\Models\Site;
 use App\Support\AnalyticsRange;
 use App\Support\AnalyticsReport;
+use App\Support\GeoIp;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\LazyCollection;
@@ -29,6 +30,7 @@ class AnalyticsController extends Controller
                 ->build($range, $request->wantsComparison()),
             'site_id' => $site->id,
             'conversion_tracking' => $site->conversion_tracking,
+            'geo' => $this->geo(),
             // site_id and password are selected only so the appended
             // short_url / has_password come out right; password stays hidden.
             'top_links' => $site->links()
@@ -53,6 +55,7 @@ class AnalyticsController extends Controller
                 ->build($request->range(), $request->wantsComparison()),
             'site_id' => $link->site_id,
             'conversion_tracking' => $link->site->conversion_tracking,
+            'geo' => $this->geo(),
         ];
     }
 
@@ -76,6 +79,22 @@ class AnalyticsController extends Controller
             : $this->csv(Click::query()->where('clicks.link_id', $link->id), $request->range(), $link->short_code);
     }
 
+    /**
+     * Whether this server can place new clicks in countries, and the credit
+     * its data source asks to be shown. Countries already recorded appear
+     * either way; this is what lets the page tell "no data yet" from "not
+     * set up".
+     *
+     * @return array{available: bool, attribution: string|null}
+     */
+    private function geo(): array
+    {
+        return [
+            'available' => app(GeoIp::class)->available(),
+            'attribution' => config('features.geoip.attribution') ?: null,
+        ];
+    }
+
     /** A subquery, not a list of ids: a site with thousands of links must not become a thousand-item IN(). */
     private function siteClicks(Site $site): Builder
     {
@@ -90,13 +109,13 @@ class AnalyticsController extends Controller
     {
         return $this->stream(
             $this->filename($name, $range),
-            ['time_utc', 'link', 'referrer', 'browser', 'browser_version', 'platform', 'device_type'],
+            ['time_utc', 'link', 'referrer', 'browser', 'browser_version', 'platform', 'device_type', 'country'],
             (new AnalyticsReport($clicks))->within($range)
                 ->join('links', 'links.id', '=', 'clicks.link_id')
-                ->select(['clicks.id', 'clicks.created_at', 'links.short_code', 'clicks.referrer', 'clicks.browser', 'clicks.browser_version', 'clicks.platform', 'clicks.device_type'])
+                ->select(['clicks.id', 'clicks.created_at', 'links.short_code', 'clicks.referrer', 'clicks.browser', 'clicks.browser_version', 'clicks.platform', 'clicks.device_type', 'clicks.country'])
                 ->orderBy('clicks.id')
                 ->lazyById(1000, 'clicks.id', 'id'),
-            fn ($click) => [$click->created_at, $click->short_code, $click->referrer, $click->browser, $click->browser_version, $click->platform, $click->device_type],
+            fn ($click) => [$click->created_at, $click->short_code, $click->referrer, $click->browser, $click->browser_version, $click->platform, $click->device_type, $click->country],
         );
     }
 

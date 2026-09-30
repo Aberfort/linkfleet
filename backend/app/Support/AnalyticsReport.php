@@ -33,6 +33,7 @@ class AnalyticsReport
             'referrers' => $this->breakdown($inRange, 'referrer'),
             'browsers' => $this->breakdown($inRange, 'browser'),
             'devices' => $this->breakdown($inRange, 'device_type'),
+            'countries' => $this->breakdown($inRange, 'country'),
         ];
 
         if ($this->conversions) {
@@ -108,6 +109,9 @@ class AnalyticsReport
             ->selectRaw("COALESCE(clicks.$column, 'Unknown') as label, COUNT(*) as clicks")
             ->groupBy('label')
             ->orderByDesc('clicks')
+            // A tie must not be left to the database's whim, or the same page
+            // would list equals in a different order from one load to the next.
+            ->orderBy('label')
             ->limit(10)
             ->get();
     }

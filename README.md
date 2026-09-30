@@ -21,6 +21,7 @@ A self-hosted redirect-link manager with click analytics — group your links by
 - **QR code per link**, generated on the fly and public, so it can be embedded straight into a page or a printout.
 - **CSV import** for moving a batch of links in at once, with per-row errors reported back instead of failing the whole file.
 - **API keys** for scripts and integrations: read-only or read-write, optionally pinned to a single workspace, throttled per key, and shown only once. The [API reference](docs/API.md) covers the rest.
+- **Geography**: which countries the clicks come from, placed from a database on your own server — the address is used for the lookup and then forgotten, and only the country is kept.
 - **Conversions**: turn a click into "how many bought". A destination site gets a `lf_click` token, reports back through a tiny snippet/pixel or — for revenue — a signed-in server call, and the dashboard shows conversions, rate and revenue per currency, per event and per link. Idempotent, attribution-windowed, and honest about which numbers come from a browser and can be forged.
 - **Webhooks** for new links, edits, deletions and clicks: signed with HMAC-SHA256, retried with backoff, with a per-webhook delivery log. Because the server calls addresses users type in, the SSRF defence around them is built and tested against hostile inputs rather than assumed — see the [backend README](backend/README.md#webhooks).
 - **Custom domains**, verified by a DNS TXT record. Once verified, that host serves the site's links at the root — `go.example.com/summer-sale` — with the same click logging, expiry and password gate, and copied links and QR codes switch to the branded address. The dashboard walks each domain through ownership → DNS → HTTPS and reports which step is still missing.
@@ -141,7 +142,7 @@ Each half also has its own README with more detail: [backend/README.md](backend/
 
 ## Honest limitations
 
-- No geolocation on clicks — deliberately out of scope (see [`app/Support/ClientIp.php`](backend/app/Support/ClientIp.php)'s comment): it would mean either a paid IP-geo API or bundling/hosting a GeoIP database, neither of which felt worth the added infrastructure for what this project is.
+- Geography is country-level and approximate: IP geolocation is wrong for VPNs and mobile carriers, there is no city, and it is only as good as the free DB-IP file it uses (CC BY 4.0, credited on the dashboard).
 - "Unique visitors" is approximate by design: IPs are truncated to a /24 and hashed, so it counts networks, not people.
 - Webhooks are sent by a single queue worker by default and are never switched off automatically when an endpoint keeps failing; `link.deleted` is not sent per link when a whole site or workspace is deleted.
 - Members are added by the email of an account that already exists; there are no emailed invitations (the public demo has no mail pipeline, and registration is closed there anyway).

@@ -35,6 +35,14 @@ Sanctum bearer tokens, fully stateless — no session cookies, no CSRF dance. `P
 
 Access is enforced by [Policies](app/Policies), not ad-hoc controller checks. Sites belong to a **workspace**, and a user reaches a site only through their role in that workspace — `User::workspaceRoles()` / `roleIn()` is the single place that answers "what may this user reach?", so policies and list endpoints cannot drift apart. Demo-account read-only enforcement is a single [`Gate::before()`](app/Providers/AppServiceProvider.php) hook, so it applies uniformly regardless of resource type.
 
+### Geography
+
+Each click gets a two-letter `country`, worked out while the request is handled, from a database file on this server (`Support\GeoIp` over `maxmind-db/reader`). The address never leaves the process and is not stored — only the country is (the hash in `ip_hash` is still all that remains of the address). With no database, or an unreadable one, the answer is simply "unknown": a redirect never depends on it, and a corrupt file is reported once an hour instead of once per click.
+
+`php artisan geoip:update` installs the file. The default source is DB-IP's free country database, which needs no account or key; it is CC BY 4.0, so the dashboard shows the credit (`GEOIP_ATTRIBUTION`). It tries this month's file, then last month's (the new one appears at the start of the month), and refuses to replace a working database with one that is not a valid country database or knows nothing about well-known addresses. Set `GEOIP_DOWNLOAD_URL` to use any other `.mmdb`/`.mmdb.gz` (say your own MaxMind GeoLite2 mirror). `docker/railway-start.sh` runs it in the background at boot and hourly with `--if-stale`, so a long-lived container still picks up each new month.
+
+It is an estimate, and worth saying so: country only (no city — that would be a bigger claim and a bigger database), wrong for VPN and mobile-carrier traffic, and only as good as the file. A click behind a private or unrouted address is "Unknown". Tests build a real, valid MaxMind DB file on the fly (`tests/Support/MmdbFixture`, itself tested against the real reader) rather than mock the reader or ship a binary.
+
 ### Conversions
 
 Every click gets a random 24-character `token` (unrelated to the visitor). With `sites.conversion_tracking` on, `RedirectController` appends it to the destination as `lf_click` (`Support\ConversionUrl` edits the raw query string so the destination's own parameters are untouched). A conversion arrives two ways, both through `Actions\RecordConversion`: `POST /api/conversions` (authenticated, `source=server`) and the public `GET /lf.gif` pixel (`source=pixel`, anyone holding the token could send it). `public/lf.js` is the browser snippet; its tests live in the frontend suite because that is where a browser-like environment exists.
@@ -189,7 +197,7 @@ app/
   Observers/        LinkObserver - turns link changes into webhook events
   Models/            User, Workspace, Site, Link, Click, Domain
   Policies/          Role checks (Workspace, Site, Link, Domain)
-  Support/           UserAgentParser, ClientIp, ApiKeyScope, OutboundUrlGuard, WebhookSender/Dispatcher/Signature, DohResolver, DnsTxtLookup, DomainProbe - small helpers; the DNS ones are test seams
+  Support/           UserAgentParser, ClientIp, GeoIp, ApiKeyScope, OutboundUrlGuard, WebhookSender/Dispatcher/Signature, DohResolver, DnsTxtLookup, DomainProbe - small helpers; the DNS ones are test seams
 database/
   migrations/
   seeders/           DemoUserSeeder, DemoDataSeeder (idempotent, run on every deploy)

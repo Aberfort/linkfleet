@@ -6,6 +6,7 @@ use App\Enums\WorkspaceRole;
 use App\Models\Link;
 use App\Models\Site;
 use App\Models\User;
+use App\Support\GeoIp;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
@@ -81,6 +82,36 @@ class AnalyticsRangeTest extends TestCase
             ->getJson("/api/sites/{$site->id}/analytics?from=2026-09-10&to=2026-09-19")
             ->assertJsonFragment(['label' => 'inside.example', 'clicks' => 1])
             ->assertJsonMissing(['label' => 'outside.example']);
+    }
+
+    public function test_countries_are_broken_down_and_follow_the_range(): void
+    {
+        [$user, $site, $link] = $this->scene();
+        $this->clickAt($link, '2026-09-12 10:00:00', ['country' => 'UA']);
+        $this->clickAt($link, '2026-09-13 10:00:00', ['country' => 'UA']);
+        $this->clickAt($link, '2026-09-14 10:00:00', ['country' => 'DE']);
+        $this->clickAt($link, '2026-09-15 10:00:00', ['country' => null]);
+        $this->clickAt($link, '2026-08-01 10:00:00', ['country' => 'FR']); // outside the range
+
+        $countries = $this->actingAs($user, 'sanctum')
+            ->getJson("/api/sites/{$site->id}/analytics?from=2026-09-10&to=2026-09-19")
+            ->assertOk()->json('countries');
+
+        $this->assertSame([['label' => 'UA', 'clicks' => 2], ['label' => 'DE', 'clicks' => 1], ['label' => 'Unknown', 'clicks' => 1]], $countries);
+    }
+
+    public function test_the_report_says_whether_this_server_can_place_new_clicks_and_what_credit_to_show(): void
+    {
+        [$user, $site] = $this->scene();
+        config(['features.geoip.database' => '/no/such/file.mmdb', 'features.geoip.attribution' => 'IP Geolocation by DB-IP']);
+        $this->app->forgetInstance(GeoIp::class);
+
+        $this->actingAs($user, 'sanctum')->getJson("/api/sites/{$site->id}/analytics")
+            ->assertJsonPath('geo.available', false)
+            ->assertJsonPath('geo.attribution', 'IP Geolocation by DB-IP');
+
+        config(['features.geoip.attribution' => '']);
+        $this->actingAs($user, 'sanctum')->getJson("/api/sites/{$site->id}/analytics")->assertJsonPath('geo.attribution', null);
     }
 
     public function test_visitors_count_distinct_hashed_networks_and_ignore_unknown_ones(): void

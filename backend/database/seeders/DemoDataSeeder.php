@@ -64,6 +64,43 @@ class DemoDataSeeder extends Seeder
 
         $this->seedConversions($marketing);
         $this->seedConversions($docs);
+
+        $this->seedCountries($marketing);
+        $this->seedCountries($docs);
+    }
+
+    /**
+     * Shares of the demo's traffic by country; the remainder is left unknown,
+     * as it is in real data. These are seeded values: the demo does not depend
+     * on the geolocation database being installed.
+     */
+    private const COUNTRY_SHARES = ['US' => 30, 'DE' => 14, 'UA' => 12, 'GB' => 10, 'PL' => 8, 'FR' => 6, 'CA' => 5, 'NL' => 4];
+
+    /**
+     * Gives clicks that have no country one, in fixed proportions. Only if
+     * the site has none at all yet, so real data recorded later is never
+     * overwritten and running this on every deploy is safe.
+     */
+    private function seedCountries(Site $site): void
+    {
+        $clicks = Click::whereIn('link_id', $site->links()->pluck('id'));
+
+        if ((clone $clicks)->whereNotNull('country')->exists()) {
+            return;
+        }
+
+        $ids = (clone $clicks)->pluck('id')->shuffle();
+        $offset = 0;
+
+        foreach (self::COUNTRY_SHARES as $country => $share) {
+            $take = (int) round($ids->count() * $share / 100);
+
+            if ($take > 0) {
+                Click::whereIn('id', $ids->slice($offset, $take)->all())->update(['country' => $country]);
+            }
+
+            $offset += $take;
+        }
     }
 
     /**

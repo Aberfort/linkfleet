@@ -6,6 +6,7 @@ use App\Enums\WebhookEvent;
 use App\Models\Click;
 use App\Models\Link;
 use App\Support\ClientIp;
+use App\Support\GeoIp;
 use App\Support\UserAgentParser;
 use App\Support\WebhookDispatcher;
 use App\Support\WebhookPayload;
@@ -17,6 +18,7 @@ class RecordLinkClick
     public function __construct(
         private readonly UserAgentParser $userAgentParser,
         private readonly ClientIp $clientIp,
+        private readonly GeoIp $geoIp,
     ) {}
 
     public function handle(Link $link, Request $request): Click
@@ -28,6 +30,9 @@ class RecordLinkClick
             // later never leaves a gap in what can be attributed.
             'token' => Str::random(24),
             'ip_hash' => $this->clientIp->truncateAndHash($request->ip()),
+            // Looked up from the raw address here and only the country kept:
+            // this is the one place the address is used for anything but hashing.
+            'country' => $this->geoIp->countryOf($request->ip()),
             'referrer' => $this->referrerHost($request->header('referer')),
             'user_agent' => $request->userAgent(),
             ...$ua,

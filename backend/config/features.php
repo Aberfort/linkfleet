@@ -25,6 +25,18 @@ return [
     // system resolver so every lookup has a hard timeout (see DohResolver).
     'doh_url' => env('DNS_OVER_HTTPS_URL', 'https://cloudflare-dns.com/dns-query'),
 
+    // Placing clicks in countries. The database is a file on this server; no
+    // address is ever sent to anyone. `php artisan geoip:update` fetches it.
+    'geoip' => [
+        'database' => env('GEOIP_DATABASE', storage_path('app/geoip/country.mmdb')),
+        // Blank = DB-IP's monthly country file. Point it at any .mmdb or
+        // .mmdb.gz you prefer (say your own MaxMind GeoLite2 mirror).
+        'download_url' => env('GEOIP_DOWNLOAD_URL'),
+        // DB-IP's licence (CC BY 4.0) asks for this to be shown where the
+        // data is used; the dashboard does. Change it if you use another source.
+        'attribution' => env('GEOIP_ATTRIBUTION', 'IP Geolocation by DB-IP'),
+    ],
+
     'conversions' => [
         // How long after a click a conversion is still credited to it.
         'attribution_days' => (int) env('CONVERSION_ATTRIBUTION_DAYS', 90),

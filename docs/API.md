@@ -149,6 +149,8 @@ With none of them you get the last 30 days.
   "referrers": [{ "label": "twitter.com", "clicks": 40 }],
   "browsers": [{ "label": "Chrome", "clicks": 90 }],
   "devices": [{ "label": "mobile", "clicks": 70 }],
+  "countries": [{ "label": "UA", "clicks": 310 }, { "label": "DE", "clicks": 120 }, { "label": "Unknown", "clicks": 44 }],
+  "geo": { "available": true, "attribution": "IP Geolocation by DB-IP" },
   "site_id": 12,
   "conversion_tracking": true,
   "conversions": {
@@ -167,13 +169,15 @@ With none of them you get the last 30 days.
 }
 ```
 
+`countries` is the ten biggest, as ISO 3166-1 alpha-2 codes (`UA`), with `Unknown` for clicks that could not be placed — everything recorded before countries existed, and any address the database does not cover. Equal counts are listed alphabetically, so the order does not change between loads. `geo.available` says whether *this server* can place new clicks (it has a country database); countries already recorded are returned either way. If you show countries, show `geo.attribution` with them: the default data source (DB-IP Lite, CC BY 4.0) asks for it.
+
 `conversions` counts what visitors did in the range (see [Conversions](#conversions)); `rate` is the share of the range's clicks that were followed by a conversion, counting a click once however many orders it led to, capped at 1 because a conversion can belong to a click from before the range, and `null` when there were no clicks. `revenue` is summed within each currency and never across them. `by_event` (not repeated under `previous`) is the ten busiest events. `conversion_tracking` says whether the site is set up to record any.
 
 `timeseries` has one entry per day in the range, quiet days as zero. `previous` is present only with `compare=previous`. `top_links` (site only) is ranked by `period_clicks` — clicks inside the range — and also carries the all-time `clicks_count`.
 
 `visitors` is **approximate**: to avoid storing IP addresses, LinkFleet truncates each to its /24 network and hashes it, and `visitors` counts distinct hashes. Two people on one network count once. Read it as "unique networks".
 
-**CSV export.** `type=clicks` (the default) is one row per click, in the order they were recorded: `time_utc, link, referrer, browser, browser_version, platform, device_type`. `type=conversions` is one row per conversion: `time_utc, link, event, value, currency, external_id, source` — without the click token, since whoever holds one can report conversions for that click. No IP address in any form. It opens correctly in Excel (UTF-8 with a byte-order mark), a cell that a spreadsheet would run as a formula (starting with `=`, `+`, `-` or `@`) is defused with a leading `'`, and one export is capped at 100 000 rows — narrow the range for more. It is a plain `GET`, so a read-only key can use it, and it is rate-limited to 10 per minute.
+**CSV export.** `type=clicks` (the default) is one row per click, in the order they were recorded: `time_utc, link, referrer, browser, browser_version, platform, device_type, country`. `type=conversions` is one row per conversion: `time_utc, link, event, value, currency, external_id, source` — without the click token, since whoever holds one can report conversions for that click. No IP address in any form. It opens correctly in Excel (UTF-8 with a byte-order mark), a cell that a spreadsheet would run as a formula (starting with `=`, `+`, `-` or `@`) is defused with a leading `'`, and one export is capped at 100 000 rows — narrow the range for more. It is a plain `GET`, so a read-only key can use it, and it is rate-limited to 10 per minute.
 
 Visitor IP addresses are never stored as they are: they are truncated to a network and hashed first (see the README).
 
@@ -291,6 +295,7 @@ Every request is a `POST` with `Content-Type: application/json` and this envelop
     "click": {
       "id": "Xk3…",
       "occurred_at": "2026-09-30T09:18:42+00:00",
+      "country": "UA",
       "referrer": "twitter.com",
       "browser": "Mobile Safari",
       "browser_version": "17.0",
@@ -315,7 +320,7 @@ Every request is a `POST` with `Content-Type: application/json` and this envelop
 }
 ```
 
-`click.id` in `link.clicked` is the same token that `conversion.click_id` carries, so a receiver can match a conversion to the click that caused it. The visitor's IP address is never included — not even hashed — and the referrer is the host only. We may add fields to these objects; we will not rename or remove them.
+`click.id` in `link.clicked` is the same token that `conversion.click_id` carries, so a receiver can match a conversion to the click that caused it. The visitor's IP address is never included — not even hashed — the referrer is the host only, and `country` is the two-letter code (or `null`). We may add fields to these objects; we will not rename or remove them.
 
 The same event has the same `id` on every retry and for every webhook that receives it, so use `id` to ignore duplicates.
 

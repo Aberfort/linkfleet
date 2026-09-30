@@ -97,4 +97,36 @@ class DemoSeederConversionsTest extends TestCase
             ->assertJsonPath('conversion_tracking', true)
             ->assertJsonPath('conversions.revenue.0.currency', 'USD');
     }
+
+    public function test_the_demo_has_traffic_from_a_spread_of_countries_and_some_unknown(): void
+    {
+        $this->seedDemo();
+
+        $countries = Click::whereNotNull('country')->distinct()->pluck('country')->all();
+        $this->assertGreaterThanOrEqual(6, count($countries));
+        $this->assertContains('US', $countries);
+        $this->assertContains('UA', $countries);
+        $this->assertGreaterThan(0, Click::whereNull('country')->count(), 'real data has unknowns too');
+        $this->assertSame(0, Click::whereRaw('LENGTH(country) <> 2')->count());
+    }
+
+    public function test_countries_are_only_seeded_once_and_never_over_real_data(): void
+    {
+        $this->seedDemo();
+        $before = Click::orderBy('id')->pluck('country', 'id')->all();
+
+        $this->seed(DemoDataSeeder::class);
+        $this->assertSame($before, Click::orderBy('id')->pluck('country', 'id')->all());
+    }
+
+    public function test_clicks_seeded_before_countries_existed_get_them(): void
+    {
+        $this->seedDemo();
+        // Production's state: clicks that predate the country column.
+        Click::query()->update(['country' => null]);
+
+        $this->seed(DemoDataSeeder::class);
+
+        $this->assertGreaterThan(0, Click::whereNotNull('country')->count());
+    }
 }

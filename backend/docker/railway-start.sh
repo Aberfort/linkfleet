@@ -20,11 +20,19 @@ php artisan db:seed --force
 for _ in $(seq 1 "${QUEUE_WORKERS:-1}"); do
     (
         while true; do
+            php artisan geoip:update --if-stale > /dev/null 2>&1 || true
             php artisan queue:work --sleep=2 --max-time=3600 || true
             sleep 2
         done
     ) &
 done
+
+# The country database behind the geography chart is fetched in the
+# background so boot never waits on someone else's server, and a failure only
+# means clicks are recorded without a country. --if-stale makes this a no-op
+# unless the file is missing or over 35 days old; the worker loop below checks
+# again every hour, so a long-running container still picks up each month's file.
+( php artisan geoip:update --if-stale || true ) &
 
 # php's built-in server handles one request at a time, which stalls anything
 # that has this app call itself: POST /api/domains/{id}/check probes

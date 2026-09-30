@@ -27,6 +27,7 @@ class Click extends Model
         'browser_version',
         'platform',
         'device_type',
+        'country',
     ];
 
     public function conversions(): HasMany

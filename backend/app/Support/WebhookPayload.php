@@ -45,6 +45,7 @@ final class WebhookPayload
             'browser_version' => $click->browser_version,
             'platform' => $click->platform,
             'device_type' => $click->device_type,
+            'country' => $click->country,
         ];
     }
 

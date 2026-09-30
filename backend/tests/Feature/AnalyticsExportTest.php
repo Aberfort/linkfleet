@@ -39,8 +39,8 @@ class AnalyticsExportTest extends TestCase
         $site = Site::factory()->ownedBy($user)->create(['name' => 'My Shop']);
         $promo = Link::factory()->for($site)->create(['short_code' => 'promo']);
         $docs = Link::factory()->for($site)->create(['short_code' => 'docs']);
-        $this->clickAt($docs, '2026-09-12 11:00:00', ['referrer' => 'google.com', 'browser' => 'Firefox', 'browser_version' => '131.0', 'platform' => 'macOS', 'device_type' => 'desktop']);
-        $this->clickAt($promo, '2026-09-11 10:00:00', ['referrer' => 'twitter.com', 'browser' => 'Chrome', 'browser_version' => '129.0', 'platform' => 'Windows', 'device_type' => 'desktop']);
+        $this->clickAt($docs, '2026-09-12 11:00:00', ['referrer' => 'google.com', 'browser' => 'Firefox', 'browser_version' => '131.0', 'platform' => 'macOS', 'device_type' => 'desktop', 'country' => 'DE']);
+        $this->clickAt($promo, '2026-09-11 10:00:00', ['referrer' => 'twitter.com', 'browser' => 'Chrome', 'browser_version' => '129.0', 'platform' => 'Windows', 'device_type' => 'desktop', 'country' => 'UA']);
 
         $response = $this->actingAs($user, 'sanctum')->get("/api/sites/{$site->id}/analytics/export?from=2026-09-10&to=2026-09-19");
 
@@ -52,11 +52,11 @@ class AnalyticsExportTest extends TestCase
         );
 
         $rows = $this->rows($response->streamedContent());
-        $this->assertSame(['time_utc', 'link', 'referrer', 'browser', 'browser_version', 'platform', 'device_type'], $rows[0]);
+        $this->assertSame(['time_utc', 'link', 'referrer', 'browser', 'browser_version', 'platform', 'device_type', 'country'], $rows[0]);
         $this->assertCount(3, $rows);
         // Clicks come out in the order they were recorded (by id), not the order they were backdated.
-        $this->assertSame(['2026-09-12 11:00:00', 'docs', 'google.com', 'Firefox', '131.0', 'macOS', 'desktop'], $rows[1]);
-        $this->assertSame(['2026-09-11 10:00:00', 'promo', 'twitter.com', 'Chrome', '129.0', 'Windows', 'desktop'], $rows[2]);
+        $this->assertSame(['2026-09-12 11:00:00', 'docs', 'google.com', 'Firefox', '131.0', 'macOS', 'desktop', 'DE'], $rows[1]);
+        $this->assertSame(['2026-09-11 10:00:00', 'promo', 'twitter.com', 'Chrome', '129.0', 'Windows', 'desktop', 'UA'], $rows[2]);
     }
 
     public function test_the_file_opens_correctly_in_excel(): void
