@@ -25,6 +25,13 @@ return [
     // system resolver so every lookup has a hard timeout (see DohResolver).
     'doh_url' => env('DNS_OVER_HTTPS_URL', 'https://cloudflare-dns.com/dns-query'),
 
+    // The header your hosting platform sets to the visitor's real address, and
+    // overwrites if a visitor tries to send it: X-Real-IP on Railway. Leave it
+    // empty when a single proxy (say the bundled nginx) sits in front, where
+    // Laravel's X-Forwarded-For handling is already right. See
+    // App\Http\Middleware\RealIpFromHeader before setting it.
+    'client_ip_header' => env('CLIENT_IP_HEADER'),
+
     // Placing clicks in countries. The database is a file on this server; no
     // address is ever sent to anyone. `php artisan geoip:update` fetches it.
     'geoip' => [

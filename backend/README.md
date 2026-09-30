@@ -35,6 +35,12 @@ Sanctum bearer tokens, fully stateless — no session cookies, no CSRF dance. `P
 
 Access is enforced by [Policies](app/Policies), not ad-hoc controller checks. Sites belong to a **workspace**, and a user reaches a site only through their role in that workspace — `User::workspaceRoles()` / `roleIn()` is the single place that answers "what may this user reach?", so policies and list endpoints cannot drift apart. Demo-account read-only enforcement is a single [`Gate::before()`](app/Providers/AppServiceProvider.php) hook, so it applies uniformly regardless of resource type.
 
+### Who the visitor is, behind a proxy
+
+Everything that depends on the visitor's address - the hash behind "unique visitors", the country, and every per-address rate limit - reads `$request->ip()`. Laravel derives that from `X-Forwarded-For`, trusting only the proxy that connected to it, which is right with one proxy in front (the bundled nginx) and wrong with two. Railway's edge has more than one: the app was handed an intermediate proxy in another country as "the visitor", so all visitors looked like a single one and the pixel's and login's per-address limits were one shared bucket for the world. It went unnoticed until geography named the wrong country.
+
+`CLIENT_IP_HEADER` (`RealIpFromHeader`) fixes that where it is set: it takes the address from the header your platform sets and overwrites (`X-Real-IP` on Railway, per Railway's own staff; a client cannot supply it), and rewrites `REMOTE_ADDR` and `X-Forwarded-For` to match so every reader agrees. Do not set it if the app can be reached without going through that proxy - then the header is just something a visitor writes. `X-Forwarded-Proto` is left alone, so generated links stay `https`.
+
 ### Geography
 
 Each click gets a two-letter `country`, worked out while the request is handled, from a database file on this server (`Support\GeoIp` over `maxmind-db/reader`). The address never leaves the process and is not stored — only the country is (the hash in `ip_hash` is still all that remains of the address). With no database, or an unreadable one, the answer is simply "unknown": a redirect never depends on it, and a corrupt file is reported once an hour instead of once per click.
@@ -178,7 +184,7 @@ Rows are validated individually and capped at 1000 per file — a bad row is ski
 vendor/bin/phpunit
 ```
 
-425 Feature/Unit tests — auth flow, ownership boundaries (cross-user 403s, demo-account write blocks), the redirect+click-logging path, analytics aggregation, custom-domain verification and host-based routing. `phpunit.xml` runs against an in-memory SQLite database, so no service container/setup needed.
+491 Feature/Unit tests — auth flow, ownership boundaries (cross-user 403s, demo-account write blocks), the redirect+click-logging path, analytics aggregation, custom-domain verification and host-based routing. `phpunit.xml` runs against an in-memory SQLite database, so no service container/setup needed.
 
 ```bash
 vendor/bin/pint          # check code style

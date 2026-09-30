@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EnforceKeyScope;
+use App\Http\Middleware\RealIpFromHeader;
 use App\Http\Middleware\RequireSession;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Application;
@@ -26,6 +27,10 @@ return Application::configure(basePath: dirname(__DIR__))
         // edge, or our own nginx in docker-compose) — without this, click
         // analytics would record the proxy's IP instead of the visitor's.
         $middleware->trustProxies(at: '*');
+
+        // Before TrustProxies reads REMOTE_ADDR, so everything after agrees
+        // about who the visitor is. A no-op unless CLIENT_IP_HEADER is set.
+        $middleware->prepend(RealIpFromHeader::class);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         $exceptions->render(function (AuthenticationException $e, $request) {
