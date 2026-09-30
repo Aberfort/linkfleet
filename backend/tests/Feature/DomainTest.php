@@ -31,7 +31,7 @@ class DomainTest extends TestCase
     public function test_show_reports_null_when_the_site_has_no_domain(): void
     {
         $user = User::factory()->create();
-        $site = Site::factory()->for($user)->create();
+        $site = Site::factory()->ownedBy($user)->create();
 
         $this->actingAs($user, 'sanctum')
             ->getJson("/api/sites/{$site->id}/domain")
@@ -42,7 +42,7 @@ class DomainTest extends TestCase
     public function test_show_returns_the_attached_domain(): void
     {
         $user = User::factory()->create();
-        $site = Site::factory()->for($user)->create();
+        $site = Site::factory()->ownedBy($user)->create();
         $domain = Domain::factory()->for($site)->create(['host' => 'go.example.com']);
 
         $this->actingAs($user, 'sanctum')
@@ -55,7 +55,7 @@ class DomainTest extends TestCase
 
     public function test_show_is_denied_for_someone_elses_site(): void
     {
-        $site = Site::factory()->for(User::factory())->create();
+        $site = Site::factory()->create();
 
         $this->actingAs(User::factory()->create(), 'sanctum')
             ->getJson("/api/sites/{$site->id}/domain")
@@ -65,7 +65,7 @@ class DomainTest extends TestCase
     public function test_owner_can_attach_a_domain_to_their_site(): void
     {
         $user = User::factory()->create();
-        $site = Site::factory()->for($user)->create();
+        $site = Site::factory()->ownedBy($user)->create();
 
         $response = $this->actingAs($user, 'sanctum')
             ->postJson("/api/sites/{$site->id}/domain", ['host' => 'go.example.com']);
@@ -81,7 +81,7 @@ class DomainTest extends TestCase
     public function test_it_normalizes_a_pasted_url_down_to_the_host(): void
     {
         $user = User::factory()->create();
-        $site = Site::factory()->for($user)->create();
+        $site = Site::factory()->ownedBy($user)->create();
 
         $this->actingAs($user, 'sanctum')
             ->postJson("/api/sites/{$site->id}/domain", ['host' => 'HTTPS://Go.Example.com/some/path'])
@@ -95,7 +95,7 @@ class DomainTest extends TestCase
         Domain::factory()->for($other)->create(['host' => 'go.example.com']);
 
         $user = User::factory()->create();
-        $site = Site::factory()->for($user)->create();
+        $site = Site::factory()->ownedBy($user)->create();
 
         $this->actingAs($user, 'sanctum')
             ->postJson("/api/sites/{$site->id}/domain", ['host' => 'go.example.com'])
@@ -106,7 +106,7 @@ class DomainTest extends TestCase
     {
         config(['app.url' => 'https://links.myapp.test']);
         $user = User::factory()->create();
-        $site = Site::factory()->for($user)->create();
+        $site = Site::factory()->ownedBy($user)->create();
 
         $this->actingAs($user, 'sanctum')
             ->postJson("/api/sites/{$site->id}/domain", ['host' => 'links.myapp.test'])
@@ -116,7 +116,7 @@ class DomainTest extends TestCase
     public function test_it_rejects_a_malformed_host(): void
     {
         $user = User::factory()->create();
-        $site = Site::factory()->for($user)->create();
+        $site = Site::factory()->ownedBy($user)->create();
 
         foreach (['no-dot', '-bad.example.com', 'spaces here.com'] as $host) {
             $this->actingAs($user, 'sanctum')
@@ -128,7 +128,7 @@ class DomainTest extends TestCase
     public function test_verification_succeeds_when_the_txt_record_matches(): void
     {
         $user = User::factory()->create();
-        $site = Site::factory()->for($user)->create();
+        $site = Site::factory()->ownedBy($user)->create();
         $domain = Domain::factory()->for($site)->create(['host' => 'go.example.com']);
 
         $this->fakeDns(['_linkfleet.go.example.com' => ['unrelated', $domain->verification_token]]);
@@ -144,7 +144,7 @@ class DomainTest extends TestCase
     public function test_verification_fails_when_the_record_is_missing(): void
     {
         $user = User::factory()->create();
-        $site = Site::factory()->for($user)->create();
+        $site = Site::factory()->ownedBy($user)->create();
         $domain = Domain::factory()->for($site)->create(['host' => 'go.example.com']);
 
         $this->fakeDns([]);
@@ -160,7 +160,7 @@ class DomainTest extends TestCase
     {
         $owner = User::factory()->create();
         $other = User::factory()->create();
-        $site = Site::factory()->for($owner)->create();
+        $site = Site::factory()->ownedBy($owner)->create();
 
         $this->actingAs($other, 'sanctum')
             ->postJson("/api/sites/{$site->id}/domain", ['host' => 'go.example.com'])
@@ -171,7 +171,7 @@ class DomainTest extends TestCase
     {
         $owner = User::factory()->create();
         $other = User::factory()->create();
-        $domain = Domain::factory()->for(Site::factory()->for($owner))->create();
+        $domain = Domain::factory()->for(Site::factory()->ownedBy($owner))->create();
 
         $this->actingAs($other, 'sanctum')
             ->postJson("/api/domains/{$domain->id}/verify")
@@ -181,7 +181,7 @@ class DomainTest extends TestCase
     public function test_demo_user_cannot_attach_a_domain(): void
     {
         $demo = User::factory()->create(['is_demo' => true]);
-        $site = Site::factory()->for($demo)->create();
+        $site = Site::factory()->ownedBy($demo)->create();
 
         $this->actingAs($demo, 'sanctum')
             ->postJson("/api/sites/{$site->id}/domain", ['host' => 'go.example.com'])
@@ -191,7 +191,7 @@ class DomainTest extends TestCase
     public function test_attaching_a_second_domain_replaces_the_first(): void
     {
         $user = User::factory()->create();
-        $site = Site::factory()->for($user)->create();
+        $site = Site::factory()->ownedBy($user)->create();
         Domain::factory()->for($site)->create(['host' => 'old.example.com']);
 
         $this->actingAs($user, 'sanctum')
@@ -205,7 +205,7 @@ class DomainTest extends TestCase
     public function test_owner_can_detach_a_domain(): void
     {
         $user = User::factory()->create();
-        $domain = Domain::factory()->for(Site::factory()->for($user))->create();
+        $domain = Domain::factory()->for(Site::factory()->ownedBy($user))->create();
 
         $this->actingAs($user, 'sanctum')
             ->deleteJson("/api/domains/{$domain->id}")
@@ -238,7 +238,7 @@ class DomainTest extends TestCase
         config(['features.custom_domain_target' => 'edge.example.net']);
         $this->fakeProbe(dns: true, https: true);
         $user = User::factory()->create();
-        $domain = Domain::factory()->for(Site::factory()->for($user))->verified()->create();
+        $domain = Domain::factory()->for(Site::factory()->ownedBy($user))->verified()->create();
 
         $this->actingAs($user, 'sanctum')
             ->postJson("/api/domains/{$domain->id}/check")
@@ -250,7 +250,7 @@ class DomainTest extends TestCase
     {
         $this->fakeProbe(dns: true, https: false);
         $user = User::factory()->create();
-        $domain = Domain::factory()->for(Site::factory()->for($user))->verified()->create();
+        $domain = Domain::factory()->for(Site::factory()->ownedBy($user))->verified()->create();
 
         $this->actingAs($user, 'sanctum')
             ->postJson("/api/domains/{$domain->id}/check")
@@ -264,7 +264,7 @@ class DomainTest extends TestCase
         // https would answer true - the point is it must not even be asked.
         $this->fakeProbe(dns: false, https: true);
         $user = User::factory()->create();
-        $domain = Domain::factory()->for(Site::factory()->for($user))->verified()->create();
+        $domain = Domain::factory()->for(Site::factory()->ownedBy($user))->verified()->create();
 
         $this->actingAs($user, 'sanctum')
             ->postJson("/api/domains/{$domain->id}/check")
@@ -276,7 +276,7 @@ class DomainTest extends TestCase
     public function test_check_requires_the_domain_to_be_verified_first(): void
     {
         $user = User::factory()->create();
-        $domain = Domain::factory()->for(Site::factory()->for($user))->create();
+        $domain = Domain::factory()->for(Site::factory()->ownedBy($user))->create();
 
         $this->actingAs($user, 'sanctum')
             ->postJson("/api/domains/{$domain->id}/check")
@@ -285,7 +285,7 @@ class DomainTest extends TestCase
 
     public function test_check_is_denied_for_someone_elses_domain(): void
     {
-        $domain = Domain::factory()->for(Site::factory()->for(User::factory()))->verified()->create();
+        $domain = Domain::factory()->for(Site::factory())->verified()->create();
 
         $this->actingAs(User::factory()->create(), 'sanctum')
             ->postJson("/api/domains/{$domain->id}/check")

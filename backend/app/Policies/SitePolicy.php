@@ -4,6 +4,7 @@ namespace App\Policies;
 
 use App\Models\Site;
 use App\Models\User;
+use App\Models\Workspace;
 
 class SitePolicy
 {
@@ -14,21 +15,24 @@ class SitePolicy
 
     public function view(User $user, Site $site): bool
     {
-        return $user->id === $site->user_id;
+        return $user->roleIn($site->workspace_id) !== null;
     }
 
-    public function create(User $user): bool
+    // Called as authorize('create', [Site::class, $workspace]).
+    public function create(User $user, Workspace $workspace): bool
     {
-        return true;
+        return $user->roleIn($workspace)?->canEdit() ?? false;
     }
 
     public function update(User $user, Site $site): bool
     {
-        return $user->id === $site->user_id;
+        return $user->roleIn($site->workspace_id)?->canEdit() ?? false;
     }
 
+    // Deleting a site takes every link and click under it along, so it stays
+    // with owners even though editors may change everything else.
     public function delete(User $user, Site $site): bool
     {
-        return $user->id === $site->user_id;
+        return $user->roleIn($site->workspace_id)?->isOwner() ?? false;
     }
 }

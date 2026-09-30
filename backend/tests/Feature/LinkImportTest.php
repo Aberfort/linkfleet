@@ -21,7 +21,7 @@ class LinkImportTest extends TestCase
     public function test_it_imports_rows_with_and_without_short_codes(): void
     {
         $user = User::factory()->create();
-        $site = Site::factory()->for($user)->create();
+        $site = Site::factory()->ownedBy($user)->create();
 
         $response = $this->actingAs($user, 'sanctum')->post(
             "/api/sites/{$site->id}/links/import",
@@ -41,7 +41,7 @@ class LinkImportTest extends TestCase
     public function test_it_skips_invalid_rows_and_reports_why(): void
     {
         $user = User::factory()->create();
-        $site = Site::factory()->for($user)->create();
+        $site = Site::factory()->ownedBy($user)->create();
 
         $response = $this->actingAs($user, 'sanctum')->post(
             "/api/sites/{$site->id}/links/import",
@@ -60,7 +60,7 @@ class LinkImportTest extends TestCase
     public function test_it_rejects_a_file_without_the_target_url_header(): void
     {
         $user = User::factory()->create();
-        $site = Site::factory()->for($user)->create();
+        $site = Site::factory()->ownedBy($user)->create();
 
         $response = $this->actingAs($user, 'sanctum')->post(
             "/api/sites/{$site->id}/links/import",
@@ -74,7 +74,7 @@ class LinkImportTest extends TestCase
     public function test_it_skips_a_code_already_taken_in_the_database(): void
     {
         $user = User::factory()->create();
-        $site = Site::factory()->for($user)->create();
+        $site = Site::factory()->ownedBy($user)->create();
         Link::factory()->for($site)->create(['short_code' => 'taken']);
 
         $response = $this->actingAs($user, 'sanctum')->post(
@@ -88,7 +88,7 @@ class LinkImportTest extends TestCase
     public function test_it_skips_a_code_duplicated_within_the_same_file(): void
     {
         $user = User::factory()->create();
-        $site = Site::factory()->for($user)->create();
+        $site = Site::factory()->ownedBy($user)->create();
 
         $response = $this->actingAs($user, 'sanctum')->post(
             "/api/sites/{$site->id}/links/import",
@@ -106,7 +106,7 @@ class LinkImportTest extends TestCase
     public function test_demo_user_cannot_import(): void
     {
         $demo = User::factory()->create(['is_demo' => true]);
-        $site = Site::factory()->for($demo)->create();
+        $site = Site::factory()->ownedBy($demo)->create();
 
         $this->actingAs($demo, 'sanctum')
             ->post("/api/sites/{$site->id}/links/import", [
@@ -121,7 +121,7 @@ class LinkImportTest extends TestCase
     {
         $owner = User::factory()->create();
         $other = User::factory()->create();
-        $site = Site::factory()->for($owner)->create();
+        $site = Site::factory()->ownedBy($owner)->create();
 
         $this->actingAs($other, 'sanctum')
             ->post("/api/sites/{$site->id}/links/import", [

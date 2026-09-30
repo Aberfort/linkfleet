@@ -44,7 +44,7 @@ class ShortUrlTest extends TestCase
     public function test_the_link_list_carries_short_urls_without_leaking_the_site(): void
     {
         $user = User::factory()->create();
-        $site = Site::factory()->for($user)->create();
+        $site = Site::factory()->ownedBy($user)->create();
         Domain::factory()->for($site)->verified()->create(['host' => 'go.example.com']);
         Link::factory()->for($site)->create(['short_code' => 'promo']);
 
@@ -59,7 +59,7 @@ class ShortUrlTest extends TestCase
     public function test_listing_links_does_not_query_per_row(): void
     {
         $user = User::factory()->create();
-        $site = Site::factory()->for($user)->create();
+        $site = Site::factory()->ownedBy($user)->create();
         Domain::factory()->for($site)->verified()->create();
         Link::factory()->for($site)->count(8)->create();
 
@@ -79,7 +79,7 @@ class ShortUrlTest extends TestCase
     public function test_site_analytics_top_links_carry_the_branded_url(): void
     {
         $user = User::factory()->create();
-        $site = Site::factory()->for($user)->create();
+        $site = Site::factory()->ownedBy($user)->create();
         Domain::factory()->for($site)->verified()->create(['host' => 'go.example.com']);
         Link::factory()->for($site)->create(['short_code' => 'promo', 'clicks_count' => 3]);
 

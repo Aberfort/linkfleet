@@ -39,13 +39,15 @@ class DemoDataSeeder extends Seeder
             return;
         }
 
+        $workspace = $user->defaultWorkspace();
+
         $marketing = Site::query()->updateOrCreate(
-            ['user_id' => $user->id, 'name' => 'Marketing Site'],
+            ['workspace_id' => $workspace->id, 'name' => 'Marketing Site'],
             ['domain' => 'example.com', 'description' => 'Landing pages and social campaigns.']
         );
 
         $docs = Site::query()->updateOrCreate(
-            ['user_id' => $user->id, 'name' => 'Docs Site'],
+            ['workspace_id' => $workspace->id, 'name' => 'Docs Site'],
             ['domain' => 'docs.example.com', 'description' => 'Public documentation redirects.']
         );
 

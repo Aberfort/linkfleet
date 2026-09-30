@@ -82,7 +82,7 @@ class LinkGateTest extends TestCase
     public function test_password_hash_is_never_exposed_through_the_api(): void
     {
         $user = User::factory()->create();
-        $site = Site::factory()->for($user)->create();
+        $site = Site::factory()->ownedBy($user)->create();
         $link = Link::factory()->for($site)->create();
         $link->forceFill(['password' => Hash::make('letmein')])->save();
 
@@ -96,7 +96,7 @@ class LinkGateTest extends TestCase
     public function test_owner_can_set_and_then_clear_a_password(): void
     {
         $user = User::factory()->create();
-        $site = Site::factory()->for($user)->create();
+        $site = Site::factory()->ownedBy($user)->create();
         $link = Link::factory()->for($site)->create();
 
         $this->actingAs($user, 'sanctum')
@@ -117,7 +117,7 @@ class LinkGateTest extends TestCase
     public function test_omitting_the_password_key_leaves_an_existing_password_alone(): void
     {
         $user = User::factory()->create();
-        $site = Site::factory()->for($user)->create();
+        $site = Site::factory()->ownedBy($user)->create();
         $link = Link::factory()->for($site)->create();
         $link->forceFill(['password' => Hash::make('letmein')])->save();
 
@@ -131,7 +131,7 @@ class LinkGateTest extends TestCase
     public function test_expiry_in_the_past_is_rejected_on_create(): void
     {
         $user = User::factory()->create();
-        $site = Site::factory()->for($user)->create();
+        $site = Site::factory()->ownedBy($user)->create();
 
         $this->actingAs($user, 'sanctum')
             ->postJson("/api/sites/{$site->id}/links", [

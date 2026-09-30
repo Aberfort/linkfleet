@@ -27,7 +27,24 @@ To use MySQL instead, uncomment the `DB_*` block in `.env.example` (matches `doc
 
 Sanctum bearer tokens, fully stateless — no session cookies, no CSRF dance. `POST /api/login` / `/api/register` return a token; send it as `Authorization: Bearer <token>` on everything else.
 
-Ownership is enforced by [Policies](app/Policies) (`SitePolicy`, `LinkPolicy`), not ad-hoc controller checks — a user can only ever see/edit/delete their own sites and links. Demo-account read-only enforcement is a single [`Gate::before()`](app/Providers/AppServiceProvider.php) hook, so it applies uniformly regardless of resource type.
+Access is enforced by [Policies](app/Policies), not ad-hoc controller checks. Sites belong to a **workspace**, and a user reaches a site only through their role in that workspace — `User::workspaceRoles()` / `roleIn()` is the single place that answers "what may this user reach?", so policies and list endpoints cannot drift apart. Demo-account read-only enforcement is a single [`Gate::before()`](app/Providers/AppServiceProvider.php) hook, so it applies uniformly regardless of resource type.
+
+### Workspaces and roles
+
+Three coarse roles instead of a permission matrix:
+
+| | viewer | editor | owner |
+|---|:-:|:-:|:-:|
+| Read sites, links, analytics, domain | ✓ | ✓ | ✓ |
+| Create and change sites and links, import CSV | | ✓ | ✓ |
+| Delete a link | | ✓ | ✓ |
+| Delete a site (takes its links and clicks along) | | | ✓ |
+| Attach, verify and remove a custom domain | | | ✓ |
+| Rename or delete the workspace, manage members | | | ✓ |
+
+`tests/Feature/RoleMatrixTest.php` checks this table rather than trusting it. Any member may leave a workspace; a workspace can never be left without an owner (the check locks the workspace row, so two owners cannot demote each other at the same moment). Members are added by the email of an existing account — there is no invitation flow. A workspace the caller cannot see is answered like one that does not exist, so ids cannot be probed.
+
+Every user gets a workspace at registration. The migration that introduced workspaces gave each existing user one and moved their sites into it, so nothing changed for them; it was run against MySQL with old-shape data, rolled back, and re-applied before it shipped.
 
 ## API
 
@@ -38,7 +55,11 @@ Ownership is enforced by [Policies](app/Policies) (`SitePolicy`, `LinkPolicy`), 
 | POST | `/api/logout` | ✓ | |
 | GET | `/api/user` | ✓ | |
 | GET | `/api/config` | — | `{ registration_enabled, custom_domain_target }` |
-| GET/POST | `/api/sites` | ✓ | |
+| GET/POST | `/api/workspaces` | ✓ | workspaces you belong to, each with your `role` |
+| GET/PUT/DELETE | `/api/workspaces/{workspace}` | ✓ | |
+| GET/POST | `/api/workspaces/{workspace}/members` | ✓ | add by `{ email, role }` |
+| PATCH/DELETE | `/api/workspaces/{workspace}/members/{user}` | ✓ | change role / remove (or leave, for yourself) |
+| GET/POST | `/api/sites` | ✓ | every site across your workspaces; create needs `workspace_id` |
 | GET/PUT/DELETE | `/api/sites/{site}` | ✓ | |
 | GET/POST | `/api/sites/{site}/links` | ✓ | |
 | POST | `/api/sites/{site}/links/import` | ✓ | CSV upload, see below |
@@ -98,7 +119,7 @@ Rows are validated individually and capped at 1000 per file — a bad row is ski
 vendor/bin/phpunit
 ```
 
-106 Feature/Unit tests — auth flow, ownership boundaries (cross-user 403s, demo-account write blocks), the redirect+click-logging path, analytics aggregation, custom-domain verification and host-based routing. `phpunit.xml` runs against an in-memory SQLite database, so no service container/setup needed.
+149 Feature/Unit tests — auth flow, ownership boundaries (cross-user 403s, demo-account write blocks), the redirect+click-logging path, analytics aggregation, custom-domain verification and host-based routing. `phpunit.xml` runs against an in-memory SQLite database, so no service container/setup needed.
 
 ```bash
 vendor/bin/pint          # check code style
@@ -112,8 +133,9 @@ app/
   Actions/          RecordLinkClick - the redirect endpoint's core logic
   Http/Controllers/
   Http/Requests/     Validation + authorization (FormRequest::authorize())
-  Models/            User, Site, Link, Click, Domain
-  Policies/          Ownership checks
+  Enums/            WorkspaceRole
+  Models/            User, Workspace, Site, Link, Click, Domain
+  Policies/          Role checks (Workspace, Site, Link, Domain)
   Support/           UserAgentParser, ClientIp, DohResolver, DnsTxtLookup, DomainProbe - small helpers; the DNS ones are test seams
 database/
   migrations/

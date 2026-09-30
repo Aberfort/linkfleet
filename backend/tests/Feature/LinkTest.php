@@ -15,7 +15,7 @@ class LinkTest extends TestCase
     public function test_link_gets_an_auto_generated_short_code_when_none_given(): void
     {
         $user = User::factory()->create();
-        $site = Site::factory()->for($user)->create();
+        $site = Site::factory()->ownedBy($user)->create();
 
         $response = $this->actingAs($user, 'sanctum')->postJson("/api/sites/{$site->id}/links", [
             'target_url' => 'https://example.com/target',
@@ -28,7 +28,7 @@ class LinkTest extends TestCase
     public function test_link_accepts_a_vanity_short_code(): void
     {
         $user = User::factory()->create();
-        $site = Site::factory()->for($user)->create();
+        $site = Site::factory()->ownedBy($user)->create();
 
         $response = $this->actingAs($user, 'sanctum')->postJson("/api/sites/{$site->id}/links", [
             'target_url' => 'https://example.com/target',
@@ -41,8 +41,8 @@ class LinkTest extends TestCase
     public function test_short_code_must_be_globally_unique(): void
     {
         $user = User::factory()->create();
-        $siteA = Site::factory()->for($user)->create();
-        $siteB = Site::factory()->for($user)->create();
+        $siteA = Site::factory()->ownedBy($user)->create();
+        $siteB = Site::factory()->ownedBy($user)->create();
         Link::factory()->for($siteA)->create(['short_code' => 'taken']);
 
         $response = $this->actingAs($user, 'sanctum')->postJson("/api/sites/{$siteB->id}/links", [
@@ -57,7 +57,7 @@ class LinkTest extends TestCase
     {
         $owner = User::factory()->create();
         $other = User::factory()->create();
-        $site = Site::factory()->for($owner)->create();
+        $site = Site::factory()->ownedBy($owner)->create();
 
         $response = $this->actingAs($other, 'sanctum')->postJson("/api/sites/{$site->id}/links", [
             'target_url' => 'https://example.com/target',
@@ -69,7 +69,7 @@ class LinkTest extends TestCase
     public function test_user_can_toggle_link_active_state(): void
     {
         $user = User::factory()->create();
-        $site = Site::factory()->for($user)->create();
+        $site = Site::factory()->ownedBy($user)->create();
         $link = Link::factory()->for($site)->create(['is_active' => true]);
 
         $response = $this->actingAs($user, 'sanctum')->patchJson("/api/links/{$link->id}/toggle");
@@ -80,7 +80,7 @@ class LinkTest extends TestCase
     public function test_demo_user_cannot_toggle_a_link(): void
     {
         $demo = User::factory()->create(['is_demo' => true]);
-        $site = Site::factory()->for($demo)->create();
+        $site = Site::factory()->ownedBy($demo)->create();
         $link = Link::factory()->for($site)->create(['is_active' => true]);
 
         $response = $this->actingAs($demo, 'sanctum')->patchJson("/api/links/{$link->id}/toggle");

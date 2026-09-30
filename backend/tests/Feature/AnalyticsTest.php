@@ -15,7 +15,7 @@ class AnalyticsTest extends TestCase
     public function test_site_analytics_aggregates_clicks_across_its_links(): void
     {
         $user = User::factory()->create();
-        $site = Site::factory()->for($user)->create();
+        $site = Site::factory()->ownedBy($user)->create();
         $linkA = Link::factory()->for($site)->create();
         $linkB = Link::factory()->for($site)->create();
 
@@ -35,7 +35,7 @@ class AnalyticsTest extends TestCase
     public function test_link_analytics_only_covers_that_link(): void
     {
         $user = User::factory()->create();
-        $site = Site::factory()->for($user)->create();
+        $site = Site::factory()->ownedBy($user)->create();
         $linkA = Link::factory()->for($site)->create();
         $linkB = Link::factory()->for($site)->create();
 
@@ -53,7 +53,7 @@ class AnalyticsTest extends TestCase
     {
         $owner = User::factory()->create();
         $other = User::factory()->create();
-        $site = Site::factory()->for($owner)->create();
+        $site = Site::factory()->ownedBy($owner)->create();
 
         $response = $this->actingAs($other, 'sanctum')->getJson("/api/sites/{$site->id}/analytics");
 

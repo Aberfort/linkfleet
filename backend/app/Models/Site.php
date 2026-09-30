@@ -18,9 +18,9 @@ class Site extends Model
         'description',
     ];
 
-    public function user(): BelongsTo
+    public function workspace(): BelongsTo
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(Workspace::class);
     }
 
     public function links(): HasMany

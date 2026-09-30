@@ -9,34 +9,41 @@ use Illuminate\Http\Request;
 
 class SiteController extends Controller
 {
+    /** Every site in every workspace the caller belongs to. */
     public function index(Request $request)
     {
-        return $request->user()
-            ->sites()
+        $roles = $request->user()->workspaceRoles();
+
+        return Site::query()
+            ->whereIn('workspace_id', array_keys($roles))
+            ->with('workspace:id,name')
             ->withCount('links')
             ->latest()
-            ->get();
+            ->get()
+            ->each(fn (Site $site) => $site->setAttribute('role', $roles[$site->workspace_id]->value));
     }
 
     public function store(StoreSiteRequest $request)
     {
-        $site = $request->user()->sites()->create($request->validated());
+        $site = new Site($request->validated());
+        $site->workspace_id = $request->validated('workspace_id');
+        $site->save();
 
-        return response()->json($site, 201);
+        return response()->json($this->withRole($request, $site->load('workspace:id,name')), 201);
     }
 
-    public function show(Site $site)
+    public function show(Request $request, Site $site)
     {
         $this->authorize('view', $site);
 
-        return $site->loadCount('links');
+        return $this->withRole($request, $site->load('workspace:id,name')->loadCount('links'));
     }
 
     public function update(UpdateSiteRequest $request, Site $site)
     {
         $site->update($request->validated());
 
-        return $site;
+        return $this->withRole($request, $site->load('workspace:id,name')->loadCount('links'));
     }
 
     public function destroy(Site $site)
@@ -46,5 +53,11 @@ class SiteController extends Controller
         $site->delete();
 
         return response()->json(null, 204);
+    }
+
+    /** What the caller may do with this site: the UI shows or hides controls from it. */
+    private function withRole(Request $request, Site $site): Site
+    {
+        return $site->setAttribute('role', $request->user()->roleIn($site->workspace_id)->value);
     }
 }

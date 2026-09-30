@@ -12,7 +12,7 @@ A self-hosted redirect-link manager with click analytics — group your links by
 
 ## What it does
 
-- **Multi-tenant**: every user only ever sees their own sites and links, enforced by Laravel Policies, not just hidden in the UI.
+- **Workspaces and roles**: sites live in a workspace, and a workspace has owners, editors and viewers — an agency can give each client a workspace and let them see only their own links. Enforced by Laravel Policies, not just hidden in the UI.
 - **Real redirects**: `GET /r/{code}` is an actual `302` to the link's target URL — not just a stored value nobody reads.
 - **Click analytics**: every redirect logs a click (timestamp, referrer host, browser/device — parsed locally, no external APIs) and the dashboard shows a 30-day time series plus referrer/browser/device breakdowns.
 - **Privacy by default**: visitor IPs are never stored raw. They're truncated to a /24 (IPv4) or /64 (IPv6) network and HMAC-hashed before being written to the database.
@@ -26,7 +26,8 @@ A self-hosted redirect-link manager with click analytics — group your links by
 
 ```mermaid
 erDiagram
-    User ||--o{ Site : owns
+    User }o--o{ Workspace : "member of (owner / editor / viewer)"
+    Workspace ||--o{ Site : contains
     Site ||--o{ Link : contains
     Site ||--o| Domain : "serves on"
     Link ||--o{ Click : logs
@@ -138,7 +139,7 @@ Each half also has its own README with more detail: [backend/README.md](backend/
 
 - No geolocation on clicks — deliberately out of scope (see [`app/Support/ClientIp.php`](backend/app/Support/ClientIp.php)'s comment): it would mean either a paid IP-geo API or bundling/hosting a GeoIP database, neither of which felt worth the added infrastructure for what this project is.
 - Analytics window is a fixed 30 days; no custom date-range picker yet.
-- No team/multi-user sites — a site has exactly one owner.
+- Members are added by the email of an account that already exists; there are no emailed invitations (the public demo has no mail pipeline, and registration is closed there anyway).
 - Custom domains are checked, not provisioned: LinkFleet verifies ownership and reports whether DNS and HTTPS are ready, but issuing the certificate and registering the host with the platform (a Railway custom domain, or a Caddy/nginx block on a VPS) is done outside the app. `short_code` is also still globally unique, so two sites can't both own `summer-sale`.
 
 ## License

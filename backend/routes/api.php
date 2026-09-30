@@ -6,6 +6,8 @@ use App\Http\Controllers\ConfigController;
 use App\Http\Controllers\DomainController;
 use App\Http\Controllers\LinkController;
 use App\Http\Controllers\SiteController;
+use App\Http\Controllers\WorkspaceController;
+use App\Http\Controllers\WorkspaceMemberController;
 use Illuminate\Support\Facades\Route;
 
 // Публічні маршрути
@@ -17,6 +19,12 @@ Route::get('/config', [ConfigController::class, 'index']);
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/user', [AuthController::class, 'user']);
+
+    Route::apiResource('workspaces', WorkspaceController::class);
+    Route::get('/workspaces/{workspace}/members', [WorkspaceMemberController::class, 'index']);
+    Route::post('/workspaces/{workspace}/members', [WorkspaceMemberController::class, 'store']);
+    Route::patch('/workspaces/{workspace}/members/{user}', [WorkspaceMemberController::class, 'update']);
+    Route::delete('/workspaces/{workspace}/members/{user}', [WorkspaceMemberController::class, 'destroy']);
 
     Route::apiResource('sites', SiteController::class);
     Route::post('/sites/{site}/links/import', [LinkController::class, 'import']);

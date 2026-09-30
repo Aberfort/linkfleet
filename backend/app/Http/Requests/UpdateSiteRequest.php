@@ -21,7 +21,7 @@ class UpdateSiteRequest extends FormRequest
             'name' => [
                 'sometimes', 'required', 'string', 'max:255',
                 Rule::unique('sites')
-                    ->where('user_id', $this->user()->id)
+                    ->where('workspace_id', $this->route('site')->workspace_id)
                     ->ignore($this->route('site')),
             ],
             'domain' => ['nullable', 'string', 'max:255'],

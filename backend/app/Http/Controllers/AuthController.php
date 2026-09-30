@@ -32,6 +32,10 @@ class AuthController extends Controller
             'password' => bcrypt($validated['password']),
         ]);
 
+        // Everyone starts with a workspace of their own, so there is always
+        // somewhere to put the first site.
+        $user->defaultWorkspace();
+
         // Створення API токену
         $token = $user->createToken('API Token')->plainTextToken;
 
