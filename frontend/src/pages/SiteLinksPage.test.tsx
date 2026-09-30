@@ -133,7 +133,7 @@ describe('SiteLinksPage', () => {
 
     it('uploads a chosen CSV file and refreshes the list', async () => {
         vi.mocked(linksApi.listLinks).mockResolvedValue([link]);
-        vi.mocked(linksApi.importLinks).mockResolvedValue({ imported: 2, skipped: [] });
+        vi.mocked(linksApi.importLinks).mockResolvedValue({ imported: 2, skipped: [], plan_limit: false });
 
         renderPage();
         await screen.findByText('/r/promo');
@@ -181,5 +181,36 @@ describe('SiteLinksPage', () => {
         await screen.findByText('/r/promo');
 
         expect(screen.getByRole('link', { name: 'Додати посилання' })).not.toHaveAttribute('aria-disabled');
+    });
+});
+
+describe('SiteLinksPage import into a full plan', () => {
+    it('keeps the reason on screen, with a way to fix it, rather than in a toast that vanishes', async () => {
+        vi.mocked(linksApi.listLinks).mockResolvedValue([link]);
+        vi.mocked(linksApi.importLinks).mockResolvedValue({
+            imported: 2,
+            skipped: [{ row: 4, reason: 'Ліміт плану «Free» вичерпано — посилань: 25. Перейдіть на вищий план, щоб додати більше.' }],
+            plan_limit: true,
+        });
+
+        renderPage();
+        await screen.findByText('/r/promo');
+        const file = new File(['target_url\nhttps://example.com/x\n'], 'links.csv', { type: 'text/csv' });
+        await userEvent.upload(screen.getByTestId('import-input'), file);
+
+        expect(await screen.findByText(/Ліміт плану «Free» вичерпано/)).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: 'Переглянути тарифи' })).toHaveAttribute('href', '/workspaces/1/billing');
+    });
+
+    it('shows no notice after an import that fitted', async () => {
+        vi.mocked(linksApi.listLinks).mockResolvedValue([link]);
+        vi.mocked(linksApi.importLinks).mockResolvedValue({ imported: 1, skipped: [], plan_limit: false });
+
+        renderPage();
+        await screen.findByText('/r/promo');
+        await userEvent.upload(screen.getByTestId('import-input'), new File(['target_url\nhttps://example.com/x\n'], 'l.csv', { type: 'text/csv' }));
+
+        await waitFor(() => expect(linksApi.importLinks).toHaveBeenCalled());
+        expect(screen.queryByRole('link', { name: 'Переглянути тарифи' })).not.toBeInTheDocument();
     });
 });

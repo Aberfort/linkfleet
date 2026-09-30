@@ -5,6 +5,7 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import LinkFormPage from './LinkFormPage';
 import * as linksApi from '../api/links';
 import type { Link } from '../types';
+import { httpFailure, planFull } from '../test/http';
 
 vi.mock('../api/links');
 vi.mock('react-toastify', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -131,6 +132,48 @@ describe('LinkFormPage UTM builder', () => {
                 expect.objectContaining({ target_url: 'https://example.com/page?utm_source=newsletter' })
             )
         );
+        expect(await screen.findByText('links list')).toBeInTheDocument();
+    });
+});
+
+describe('LinkFormPage when the plan is full', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    async function submitNew() {
+        renderNew();
+        await userEvent.type(screen.getByLabelText('Цільовий URL'), 'https://example.com/page');
+        await userEvent.click(screen.getByRole('button', { name: /Зберегти|Додати/ }));
+    }
+
+    it('says so where it can be read, with a way to fix it, and stays on the form', async () => {
+        vi.mocked(linksApi.createLink).mockRejectedValue(planFull(4));
+
+        await submitNew();
+
+        expect(await screen.findByText('Ліміт плану «Free» вичерпано — посилань: 25.')).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: 'Переглянути тарифи' })).toHaveAttribute('href', '/workspaces/4/billing');
+        expect(screen.queryByText('links list')).not.toBeInTheDocument();
+        expect(screen.getByLabelText('Цільовий URL')).toHaveValue('https://example.com/page'); // what was typed is kept
+    });
+
+    it('does not mistake another failure for a full plan', async () => {
+        vi.mocked(linksApi.createLink).mockRejectedValue(httpFailure(500, { message: 'oops' }));
+
+        await submitNew();
+
+        await waitFor(() => expect(linksApi.createLink).toHaveBeenCalled());
+        expect(screen.queryByRole('link', { name: 'Переглянути тарифи' })).not.toBeInTheDocument();
+    });
+
+    it('lets go of the notice once a later attempt goes through', async () => {
+        vi.mocked(linksApi.createLink).mockRejectedValueOnce(planFull(4)).mockResolvedValueOnce(existing);
+
+        await submitNew();
+        await screen.findByRole('link', { name: 'Переглянути тарифи' });
+        await userEvent.click(screen.getByRole('button', { name: /Зберегти|Додати/ }));
+
         expect(await screen.findByText('links list')).toBeInTheDocument();
     });
 });

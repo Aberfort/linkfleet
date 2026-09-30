@@ -1,9 +1,11 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
 import { AuthProvider } from './contexts/AuthContext';
+import { ConfigProvider } from './contexts/ConfigContext';
+import { useConfig } from './contexts/useConfig';
 import { useAuth } from './contexts/useAuth';
 import Navbar from './components/Navbar';
 import LoginPage from './pages/LoginPage';
@@ -17,7 +19,8 @@ import WorkspaceMembersPage from './pages/WorkspaceMembersPage';
 import ApiKeysPage from './pages/ApiKeysPage';
 import WebhooksPage from './pages/WebhooksPage';
 import SiteConversionsPage from './pages/SiteConversionsPage';
-import { fetchAppConfig } from './api/config';
+import BillingPage from './pages/BillingPage';
+import PricingPage from './pages/PricingPage';
 
 // @mui/x-charts is the single largest dependency in the app - keeping it
 // out of the main bundle means everyone who never opens analytics never
@@ -34,7 +37,9 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
     return user ? <>{children}</> : <Navigate to="/login" replace />;
 }
 
-function AppRoutes({ registrationEnabled }: { registrationEnabled: boolean }) {
+function AppRoutes() {
+    const { registrationEnabled } = useConfig();
+
     return (
         <Routes>
             <Route path="/login" element={<LoginPage />} />
@@ -71,6 +76,15 @@ function AppRoutes({ registrationEnabled }: { registrationEnabled: boolean }) {
                 element={
                     <PrivateRoute>
                         <WorkspacesPage />
+                    </PrivateRoute>
+                }
+            />
+            <Route path="/pricing" element={<PricingPage />} />
+            <Route
+                path="/workspaces/:workspaceId/billing"
+                element={
+                    <PrivateRoute>
+                        <BillingPage />
                     </PrivateRoute>
                 }
             />
@@ -156,25 +170,16 @@ function AppRoutes({ registrationEnabled }: { registrationEnabled: boolean }) {
 }
 
 function App() {
-    // Fetched once at startup - lets the register flow be disabled on a
-    // public demo deployment without a frontend rebuild (see
-    // ConfigController on the backend).
-    const [registrationEnabled, setRegistrationEnabled] = useState(true);
-
-    useEffect(() => {
-        fetchAppConfig()
-            .then((config) => setRegistrationEnabled(config.registration_enabled))
-            .catch(() => setRegistrationEnabled(true));
-    }, []);
-
     return (
-        <AuthProvider>
-            <Router>
-                <Navbar registrationEnabled={registrationEnabled} />
-                <AppRoutes registrationEnabled={registrationEnabled} />
-                <ToastContainer position="bottom-right" />
-            </Router>
-        </AuthProvider>
+        <ConfigProvider>
+            <AuthProvider>
+                <Router>
+                    <Navbar />
+                    <AppRoutes />
+                    <ToastContainer position="bottom-right" />
+                </Router>
+            </AuthProvider>
+        </ConfigProvider>
     );
 }
 

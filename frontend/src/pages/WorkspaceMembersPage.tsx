@@ -27,7 +27,9 @@ import { useAuth } from '../contexts/useAuth';
 import { getWorkspace, listMembers, addMember, setMemberRole, removeMember } from '../api/workspaces';
 import { errorMessage, validationErrors } from '../api/errors';
 import { isOwner, roleDescriptions, roleLabels } from '../utils/roles';
-import type { Member, Workspace, WorkspaceRole } from '../types';
+import PlanLimitNotice from '../components/PlanLimitNotice';
+import { planLimitOf } from '../utils/planLimit';
+import type { Member, PlanLimitPayload, Workspace, WorkspaceRole } from '../types';
 
 const roles: WorkspaceRole[] = ['owner', 'editor', 'viewer'];
 
@@ -46,6 +48,7 @@ function WorkspaceMembersPage() {
     const [workspace, setWorkspace] = useState<Workspace | null>(null);
     const [members, setMembers] = useState<Member[]>([]);
     const [loading, setLoading] = useState(true);
+    const [planLimit, setPlanLimit] = useState<PlanLimitPayload | null>(null);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -205,6 +208,9 @@ function WorkspaceMembersPage() {
                     <Typography color="text.secondary" sx={{ mb: 2 }}>
                         Людина має вже мати акаунт LinkFleet — додаємо за email.
                     </Typography>
+                    {planLimit && (
+                        <PlanLimitNotice message={planLimit.message} workspaceId={planLimit.workspace_id} sx={{ mb: 2 }} />
+                    )}
                     <Formik
                         initialValues={{ email: '', role: 'editor' as WorkspaceRole }}
                         validationSchema={validationSchema}
@@ -215,8 +221,15 @@ function WorkspaceMembersPage() {
                                 resetForm();
                                 toast.success('Учасника додано.');
                             } catch (error) {
-                                setErrors(validationErrors(error));
-                                toast.error(errorMessage(error, 'Не вдалося додати учасника.'));
+                                const limit = planLimitOf(error);
+
+                                if (limit) {
+                                    setPlanLimit(limit);
+                                } else {
+                                    setPlanLimit(null);
+                                    setErrors(validationErrors(error));
+                                    toast.error(errorMessage(error, 'Не вдалося додати учасника.'));
+                                }
                             } finally {
                                 setSubmitting(false);
                             }

@@ -2,13 +2,11 @@ import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { AppBar, Toolbar, Typography, Button, Chip } from '@mui/material';
 import { toast } from 'react-toastify';
 import { useAuth } from '../contexts/useAuth';
+import { useConfig } from '../contexts/useConfig';
 
-interface NavbarProps {
-    registrationEnabled: boolean;
-}
-
-function Navbar({ registrationEnabled }: NavbarProps) {
+function Navbar() {
     const { user, logout, loading } = useAuth();
+    const { registrationEnabled, billing } = useConfig();
     const navigate = useNavigate();
 
     const handleLogout = async () => {
@@ -32,6 +30,12 @@ function Navbar({ registrationEnabled }: NavbarProps) {
                 >
                     LinkFleet
                 </Typography>
+
+                {billing.enabled && (
+                    <Button color="inherit" component={RouterLink} to="/pricing">
+                        Тарифи
+                    </Button>
+                )}
 
                 {loading ? (
                     <Typography variant="body1">Завантаження...</Typography>

@@ -8,6 +8,7 @@ import * as sitesApi from '../api/sites';
 import * as domainsApi from '../api/domains';
 import * as configApi from '../api/config';
 import type { Domain, Site } from '../types';
+import { planFull } from '../test/http';
 
 vi.mock('../contexts/useAuth');
 vi.mock('../api/sites');
@@ -59,6 +60,7 @@ describe('SiteDomainPage', () => {
         vi.mocked(configApi.fetchAppConfig).mockResolvedValue({
             registration_enabled: true,
             custom_domain_target: 'edge.example.net',
+            billing: { enabled: false },
         });
         vi.mocked(useAuth).mockReturnValue({
             user: { id: 1, name: 'User', email: 'u@example.com', is_demo: false },
@@ -197,5 +199,39 @@ describe('SiteDomainPage', () => {
         renderPage();
 
         expect(await screen.findByRole('button', { name: 'Додати домен' })).toBeDisabled();
+    });
+});
+
+describe('SiteDomainPage when the plan has no room for a domain', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        vi.mocked(sitesApi.getSite).mockResolvedValue(site);
+        vi.mocked(configApi.fetchAppConfig).mockResolvedValue({
+            registration_enabled: true,
+            custom_domain_target: 'edge.example.net',
+            billing: { enabled: true },
+        });
+        vi.mocked(useAuth).mockReturnValue({
+            user: { id: 1, name: 'User', email: 'u@example.com', is_demo: false },
+            loading: false,
+            login: vi.fn(),
+            register: vi.fn(),
+            logout: vi.fn(),
+        });
+        vi.mocked(domainsApi.getDomain).mockResolvedValue(null);
+    });
+
+    it('explains, and points at the plans, instead of just failing', async () => {
+        vi.mocked(domainsApi.attachDomain).mockRejectedValue(
+            planFull(1, 'Ліміт плану «Free» вичерпано — власних доменів: 0. Перейдіть на вищий план, щоб додати більше.')
+        );
+        renderPage();
+
+        await userEvent.type(await screen.findByLabelText('Домен'), 'go.example.com');
+        await userEvent.click(screen.getByRole('button', { name: 'Додати домен' }));
+
+        expect(await screen.findByText(/власних доменів: 0/)).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: 'Переглянути тарифи' })).toHaveAttribute('href', '/workspaces/1/billing');
+        expect(screen.getByLabelText('Домен')).toBeInTheDocument(); // still the form, nothing attached
     });
 });

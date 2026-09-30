@@ -127,6 +127,8 @@ export interface Domain {
 export interface ImportResult {
     imported: number;
     skipped: Array<{ row: number; reason: string }>;
+    /** The import stopped because the workspace's plan is full. */
+    plan_limit: boolean;
 }
 
 export interface TimeseriesPoint {
@@ -233,10 +235,87 @@ export interface AnalyticsQuery {
     compare?: boolean;
 }
 
+export interface BillingConfig {
+    /** False on a self-hosted install: no plans, no limits, no billing screens. */
+    enabled: boolean;
+    /** Public by design - Paddle.js needs it in the browser. Present only when enabled. */
+    client_side_token?: string;
+    sandbox?: boolean;
+}
+
 export interface AppConfig {
     registration_enabled: boolean;
     /** Where a custom domain's DNS should point. */
     custom_domain_target: string;
+    billing: BillingConfig;
+}
+
+/** What a plan puts a ceiling on. */
+export type LimitedResource = 'links' | 'domains' | 'members';
+
+/** A ceiling per resource; null is unlimited. */
+export type Limits = Record<LimitedResource, number | null>;
+
+export type Usage = Record<LimitedResource, number>;
+
+export type BillingInterval = 'monthly' | 'yearly';
+
+export interface Plan {
+    key: string;
+    name: string;
+    limits: Limits;
+    /** Paddle price ids. Empty for a plan that is not for sale (Free). */
+    prices: Partial<Record<BillingInterval, string>>;
+}
+
+export interface PlanList {
+    plans: Plan[];
+    /** False until the server has all its Paddle keys; plans are shown but cannot be bought. */
+    checkout_available: boolean;
+}
+
+export interface SubscriptionInfo {
+    status: string;
+    plan: string | null;
+    price_id: string | null;
+    interval: BillingInterval | null;
+    /** When a cancelled subscription stops. */
+    ends_at: string | null;
+    on_grace_period: boolean;
+    past_due: boolean;
+    /** The signed-in user is the one paying - only they can change or cancel it. */
+    is_payer: boolean;
+    payer_name: string | null;
+}
+
+export interface Billing {
+    plan: { key: string; name: string };
+    source: 'self-hosted' | 'free' | 'subscription' | 'granted';
+    limits: Limits;
+    usage: Usage;
+    /** Resources used beyond the current plan (after a downgrade). They keep working. */
+    over_limit: LimitedResource[];
+    can_manage: boolean;
+    subscription: SubscriptionInfo | null;
+}
+
+/** The body of a 402: something was refused because the plan is full. */
+export interface PlanLimitPayload {
+    message: string;
+    code: 'plan_limit';
+    resource: LimitedResource;
+    limit: number;
+    usage: number;
+    plan: string;
+    workspace_id: number;
+}
+
+/** What Paddle.Checkout.open takes, as built by the server. */
+export interface CheckoutOptions {
+    settings?: Record<string, unknown>;
+    items: Array<{ priceId: string; quantity: number }>;
+    customer?: { id: string };
+    customData?: Record<string, unknown>;
 }
 
 export interface DomainCheck {

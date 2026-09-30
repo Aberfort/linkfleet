@@ -29,7 +29,9 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import GroupIcon from '@mui/icons-material/Group';
 import WebhookIcon from '@mui/icons-material/Webhook';
+import CreditCardIcon from '@mui/icons-material/CreditCard';
 import { useAuth } from '../contexts/useAuth';
+import { useConfig } from '../contexts/useConfig';
 import { listWorkspaces, createWorkspace, renameWorkspace, deleteWorkspace } from '../api/workspaces';
 import { errorMessage, validationErrors } from '../api/errors';
 import { isOwner, roleLabels } from '../utils/roles';
@@ -41,6 +43,7 @@ const validationSchema = Yup.object({
 
 function WorkspacesPage() {
     const { user } = useAuth();
+    const { billing } = useConfig();
     const isDemo = Boolean(user?.is_demo);
 
     const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -141,6 +144,17 @@ function WorkspacesPage() {
                                                 <GroupIcon fontSize="small" />
                                             </IconButton>
                                         </Tooltip>
+                                        {billing.enabled && (
+                                            <Tooltip title="Тариф">
+                                                <IconButton
+                                                    component={RouterLink}
+                                                    to={`/workspaces/${workspace.id}/billing`}
+                                                    aria-label="Тариф"
+                                                >
+                                                    <CreditCardIcon fontSize="small" />
+                                                </IconButton>
+                                            </Tooltip>
+                                        )}
                                         {isOwner(workspace.role) && (
                                             <Tooltip title="Вебхуки">
                                                 <IconButton

@@ -6,6 +6,7 @@ import WorkspaceMembersPage from './WorkspaceMembersPage';
 import { useAuth } from '../contexts/useAuth';
 import * as workspacesApi from '../api/workspaces';
 import type { Member, Workspace } from '../types';
+import { planFull } from '../test/http';
 
 vi.mock('../contexts/useAuth');
 vi.mock('../api/workspaces');
@@ -156,5 +157,35 @@ describe('WorkspaceMembersPage', () => {
 
         expect(screen.queryByText('Єдиний власник')).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Вийти' })).toBeInTheDocument();
+    });
+});
+
+describe('WorkspaceMembersPage when the plan has no room for another person', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        vi.mocked(useAuth).mockReturnValue({
+            user: { id: 1, name: 'Olga', email: 'olga@example.com', is_demo: false },
+            loading: false,
+            login: vi.fn(),
+            register: vi.fn(),
+            logout: vi.fn(),
+        });
+        vi.mocked(workspacesApi.getWorkspace).mockResolvedValue(workspace);
+        vi.mocked(workspacesApi.listMembers).mockResolvedValue([me]);
+    });
+
+    it('says so next to the form, with a way to fix it, and adds nobody', async () => {
+        vi.mocked(workspacesApi.addMember).mockRejectedValue(
+            planFull(1, 'Ліміт плану «Free» вичерпано — учасників: 1. Перейдіть на вищий план, щоб додати більше.')
+        );
+        renderPage();
+        await screen.findByText('olga@example.com');
+
+        await userEvent.type(screen.getByLabelText('Email'), 'ihor@example.com');
+        await userEvent.click(screen.getByRole('button', { name: 'Додати' }));
+
+        expect(await screen.findByText(/учасників: 1/)).toBeInTheDocument();
+        expect(screen.getByRole('link', { name: 'Переглянути тарифи' })).toHaveAttribute('href', '/workspaces/1/billing');
+        expect(screen.queryByText('ihor@example.com')).not.toBeInTheDocument();
     });
 });

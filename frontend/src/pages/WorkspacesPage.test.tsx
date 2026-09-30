@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import WorkspacesPage from './WorkspacesPage';
 import { useAuth } from '../contexts/useAuth';
 import * as workspacesApi from '../api/workspaces';
+import { ConfigContext, defaultConfig } from '../contexts/configValue';
 import type { Workspace } from '../types';
 
 vi.mock('../contexts/useAuth');
@@ -121,5 +122,38 @@ describe('WorkspacesPage', () => {
         expect(screen.getByRole('button', { name: 'Створити workspace' })).toBeDisabled();
         expect(screen.getByRole('button', { name: 'Видалити' })).toBeDisabled();
         expect(screen.getByText(/лише для читання/i)).toBeInTheDocument();
+    });
+});
+
+describe('WorkspacesPage tariff link', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        signIn();
+        vi.mocked(workspacesApi.listWorkspaces).mockResolvedValue([owned, shared]);
+    });
+
+    function renderWithBilling(enabled: boolean) {
+        return render(
+            <ConfigContext.Provider value={{ ...defaultConfig, loaded: true, billing: { enabled } }}>
+                <MemoryRouter>
+                    <WorkspacesPage />
+                </MemoryRouter>
+            </ConfigContext.Provider>
+        );
+    }
+
+    it('leads every workspace to its plan where plans exist', async () => {
+        renderWithBilling(true);
+        await screen.findByText('Acme Agency');
+
+        const links = screen.getAllByRole('link', { name: 'Тариф' });
+        expect(links.map((link) => link.getAttribute('href'))).toEqual(['/workspaces/1/billing', '/workspaces/2/billing']);
+    });
+
+    it('has none where nothing is sold', async () => {
+        renderWithBilling(false);
+        await screen.findByText('Acme Agency');
+
+        expect(screen.queryByRole('link', { name: 'Тариф' })).not.toBeInTheDocument();
     });
 });

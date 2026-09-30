@@ -17,7 +17,10 @@ import {
 import { getLink, createLink, updateLink } from '../api/links';
 import { errorMessage, validationErrors } from '../api/errors';
 import UtmBuilder from '../components/UtmBuilder';
+import PlanLimitNotice from '../components/PlanLimitNotice';
+import { planLimitOf } from '../utils/planLimit';
 import type { CreateLinkPayload, UpdateLinkPayload } from '../api/links';
+import type { PlanLimitPayload } from '../types';
 
 interface FormValues {
     target_url: string;
@@ -68,6 +71,7 @@ function LinkFormPage() {
     const [loading, setLoading] = useState(isEditing);
     const [hasPassword, setHasPassword] = useState(false);
     const [ownerSiteId, setOwnerSiteId] = useState<number | null>(siteId ? Number(siteId) : null);
+    const [planLimit, setPlanLimit] = useState<PlanLimitPayload | null>(null);
 
     useEffect(() => {
         if (!linkId) {
@@ -125,8 +129,16 @@ function LinkFormPage() {
             }
             navigate(`/sites/${ownerSiteId ?? siteId}/links`);
         } catch (error) {
-            setErrors(validationErrors(error));
-            toast.error(errorMessage(error, 'Помилка при збереженні посилання.'));
+            const limit = planLimitOf(error);
+
+            if (limit) {
+                // Not a mistake in the form: the workspace is full. Say so where it can be read.
+                setPlanLimit(limit);
+            } else {
+                setPlanLimit(null);
+                setErrors(validationErrors(error));
+                toast.error(errorMessage(error, 'Помилка при збереженні посилання.'));
+            }
             setSubmitting(false);
         }
     };
@@ -144,6 +156,8 @@ function LinkFormPage() {
             <Typography variant="h4" gutterBottom>
                 {isEditing ? 'Редагувати посилання' : 'Додати посилання'}
             </Typography>
+
+            {planLimit && <PlanLimitNotice message={planLimit.message} workspaceId={planLimit.workspace_id} sx={{ mb: 2 }} />}
 
             <Formik
                 enableReinitialize

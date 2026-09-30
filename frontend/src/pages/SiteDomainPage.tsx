@@ -31,7 +31,9 @@ import { fetchAppConfig } from '../api/config';
 import { errorMessage, validationErrors } from '../api/errors';
 import { publicBaseUrl } from '../api/client';
 import { isOwner } from '../utils/roles';
-import type { Domain, DomainCheck, Site } from '../types';
+import { planLimitOf } from '../utils/planLimit';
+import PlanLimitNotice from '../components/PlanLimitNotice';
+import type { Domain, DomainCheck, PlanLimitPayload, Site } from '../types';
 
 const shortLinkHost = new URL(publicBaseUrl).host;
 
@@ -81,6 +83,7 @@ function SiteDomainPage() {
     const [target, setTarget] = useState(shortLinkHost); // until /api/config says where this deployment wants domains pointed
     const [check, setCheck] = useState<DomainCheck | null>(null);
     const [checking, setChecking] = useState(false);
+    const [planLimit, setPlanLimit] = useState<PlanLimitPayload | null>(null);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -186,6 +189,10 @@ function SiteDomainPage() {
                 </Alert>
             )}
 
+            {planLimit && (
+                <PlanLimitNotice message={planLimit.message} workspaceId={planLimit.workspace_id} sx={{ mb: 3 }} />
+            )}
+
             {!domain && (
                 <Paper sx={{ p: 3 }}>
                     <Formik
@@ -194,10 +201,18 @@ function SiteDomainPage() {
                         onSubmit={async (values, { setErrors, setSubmitting }) => {
                             try {
                                 setDomain(await attachDomain(id, values.host));
+                                setPlanLimit(null);
                                 toast.success('Домен додано. Лишилось підтвердити володіння.');
                             } catch (error) {
-                                setErrors(validationErrors(error));
-                                toast.error(errorMessage(error, 'Не вдалося додати домен.'));
+                                const limit = planLimitOf(error);
+
+                                if (limit) {
+                                    setPlanLimit(limit);
+                                } else {
+                                    setPlanLimit(null);
+                                    setErrors(validationErrors(error));
+                                    toast.error(errorMessage(error, 'Не вдалося додати домен.'));
+                                }
                             } finally {
                                 setSubmitting(false);
                             }

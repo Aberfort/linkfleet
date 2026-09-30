@@ -41,6 +41,7 @@ import { errorMessage } from '../api/errors';
 import { publicBaseUrl } from '../api/client';
 import { shortLabel } from '../utils/shortUrl';
 import { canEdit } from '../utils/roles';
+import PlanLimitNotice from '../components/PlanLimitNotice';
 import type { Site, Link as LinkType } from '../types';
 
 function isExpired(link: LinkType): boolean {
@@ -58,6 +59,8 @@ function SiteLinksPage() {
     const [links, setLinks] = useState<LinkType[]>([]);
     const [loading, setLoading] = useState(true);
     const [qrLink, setQrLink] = useState<LinkType | null>(null);
+    /** Why an import stopped short: the plan is full. Stays on screen, unlike a toast. */
+    const [importLimit, setImportLimit] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const isDemo = Boolean(user?.is_demo);
@@ -124,15 +127,17 @@ function SiteLinksPage() {
 
         try {
             const result = await importLinks(id, file);
+            setImportLimit(result.plan_limit ? (result.skipped.at(-1)?.reason ?? null) : null);
             if (result.imported > 0) {
                 toast.success(`Імпортовано посилань: ${result.imported}.`);
             }
-            if (result.skipped.length > 0) {
+            // A full plan has its own, lasting message below; the toast is for row-level problems.
+            if (result.skipped.length > 0 && !result.plan_limit) {
                 toast.warn(
                     `Пропущено рядків: ${result.skipped.length}. Перший — рядок ${result.skipped[0].row}: ${result.skipped[0].reason}`
                 );
             }
-            if (result.imported === 0 && result.skipped.length === 0) {
+            if (result.imported === 0 && result.skipped.length === 0 && !result.plan_limit) {
                 toast.info('У файлі не знайшлося рядків для імпорту.');
             }
             await fetchData();
@@ -199,6 +204,9 @@ function SiteLinksPage() {
                 <Alert severity="info" sx={{ mb: 2 }}>
                     У цьому workspace у вас права лише на перегляд.
                 </Alert>
+            )}
+            {importLimit && site && (
+                <PlanLimitNotice message={importLimit} workspaceId={site.workspace_id} sx={{ mb: 2 }} />
             )}
 
             {loading ? (
