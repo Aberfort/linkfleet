@@ -38,6 +38,7 @@ import { listSites, createSite, updateSite, deleteSite } from '../api/sites';
 import { listWorkspaces } from '../api/workspaces';
 import { errorMessage, validationErrors } from '../api/errors';
 import { canEdit, isOwner } from '../utils/roles';
+import GettingStarted from '../components/GettingStarted';
 import type { Site, Workspace } from '../types';
 
 interface FormValues {
@@ -64,10 +65,16 @@ function SitesPage() {
     const [loading, setLoading] = useState(true);
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editingSite, setEditingSite] = useState<Site | null>(null);
+    // Closed by the person (the card's "Готово"); until then it stays put even
+    // once their first link exists, so the short URL is not snatched away.
+    const [onboardingDone, setOnboardingDone] = useState(false);
 
     const isDemo = Boolean(user?.is_demo);
     // A site can only be created where the user may edit.
     const writable = workspaces.filter((w) => canEdit(w.role));
+    // Someone with no links yet is walked to their first one instead of an empty table.
+    const gettingStarted =
+        !loading && !onboardingDone && !isDemo && writable.length > 0 && sites.every((site) => (site.links_count ?? 0) === 0);
 
     useEffect(() => {
         fetchSites();
@@ -154,10 +161,21 @@ function SitesPage() {
                 </Alert>
             )}
 
+            {gettingStarted && (
+                <GettingStarted
+                    sites={sites}
+                    workspaces={workspaces}
+                    onFinished={() => {
+                        setOnboardingDone(true);
+                        fetchSites();
+                    }}
+                />
+            )}
+
             {loading ? (
                 <Typography>Завантаження...</Typography>
             ) : sites.length === 0 ? (
-                <Typography>Сайтів поки немає.</Typography>
+                gettingStarted ? null : <Typography>Сайтів поки немає.</Typography>
             ) : (
                 <TableContainer component={Paper}>
                     <Table>
