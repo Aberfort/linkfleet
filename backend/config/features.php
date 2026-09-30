@@ -6,6 +6,11 @@ return [
     // register endpoint/UI stays in the codebase either way.
     'registration_enabled' => env('REGISTRATION_ENABLED', true),
 
+    // Requests per minute. A session is limited per user, an API key per key
+    // (so one noisy integration cannot starve the others, or the dashboard).
+    'api_rate_limit' => (int) env('API_RATE_LIMIT', 60),
+    'api_key_rate_limit' => (int) env('API_KEY_RATE_LIMIT', 120),
+
     // What a customer's DNS should point at (CNAME, or A records that resolve
     // to the same place). Defaults to the app's own host; deployments behind
     // a platform that hands out a per-domain target (Railway does) override it.

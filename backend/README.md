@@ -29,6 +29,18 @@ Sanctum bearer tokens, fully stateless — no session cookies, no CSRF dance. `P
 
 Access is enforced by [Policies](app/Policies), not ad-hoc controller checks. Sites belong to a **workspace**, and a user reaches a site only through their role in that workspace — `User::workspaceRoles()` / `roleIn()` is the single place that answers "what may this user reach?", so policies and list endpoints cannot drift apart. Demo-account read-only enforcement is a single [`Gate::before()`](app/Providers/AppServiceProvider.php) hook, so it applies uniformly regardless of resource type.
 
+### API keys
+
+A key is an ordinary Sanctum token that is not a full session: it carries `read` (and optionally `write`) instead of `*`, and can be pinned to one workspace with a `workspace:<id>` ability. Keeping the scheme in the ability list means no extra table and no custom token model; `Support\ApiKeyScope` is the only place that knows the spelling.
+
+- `EnforceKeyScope` lets a read key make only requests that cannot change anything; everything else needs `write`.
+- A pinned key is narrowed in `User::workspaceRoles()` — the one place every policy and list endpoint already asks — so no resource can forget to honour the pin.
+- `RequireSession` keeps key management itself off-limits to keys, so a leaked write key cannot mint more keys and outlive its own revocation.
+- Only a hash is stored; the plaintext exists in the create response and nowhere else. Tokens start with `lf_`.
+- Sessions are throttled per user (`API_RATE_LIMIT`, 60/min), keys per key (`API_KEY_RATE_LIMIT`, 120/min), so one noisy integration cannot starve another or the dashboard.
+
+The API reference for users is [`docs/API.md`](../docs/API.md).
+
 ### Workspaces and roles
 
 Three coarse roles instead of a permission matrix:
@@ -55,6 +67,8 @@ Every user gets a workspace at registration. The migration that introduced works
 | POST | `/api/logout` | ✓ | |
 | GET | `/api/user` | ✓ | |
 | GET | `/api/config` | — | `{ registration_enabled, custom_domain_target }` |
+| GET/POST | `/api/api-keys` | ✓ session | list / create (returns the key once) |
+| DELETE | `/api/api-keys/{id}` | ✓ session | revoke |
 | GET/POST | `/api/workspaces` | ✓ | workspaces you belong to, each with your `role` |
 | GET/PUT/DELETE | `/api/workspaces/{workspace}` | ✓ | |
 | GET/POST | `/api/workspaces/{workspace}/members` | ✓ | add by `{ email, role }` |
@@ -119,7 +133,7 @@ Rows are validated individually and capped at 1000 per file — a bad row is ski
 vendor/bin/phpunit
 ```
 
-149 Feature/Unit tests — auth flow, ownership boundaries (cross-user 403s, demo-account write blocks), the redirect+click-logging path, analytics aggregation, custom-domain verification and host-based routing. `phpunit.xml` runs against an in-memory SQLite database, so no service container/setup needed.
+164 Feature/Unit tests — auth flow, ownership boundaries (cross-user 403s, demo-account write blocks), the redirect+click-logging path, analytics aggregation, custom-domain verification and host-based routing. `phpunit.xml` runs against an in-memory SQLite database, so no service container/setup needed.
 
 ```bash
 vendor/bin/pint          # check code style
@@ -136,7 +150,7 @@ app/
   Enums/            WorkspaceRole
   Models/            User, Workspace, Site, Link, Click, Domain
   Policies/          Role checks (Workspace, Site, Link, Domain)
-  Support/           UserAgentParser, ClientIp, DohResolver, DnsTxtLookup, DomainProbe - small helpers; the DNS ones are test seams
+  Support/           UserAgentParser, ClientIp, ApiKeyScope, DohResolver, DnsTxtLookup, DomainProbe - small helpers; the DNS ones are test seams
 database/
   migrations/
   seeders/           DemoUserSeeder, DemoDataSeeder (idempotent, run on every deploy)

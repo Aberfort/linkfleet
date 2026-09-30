@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Middleware\EnforceKeyScope;
+use App\Http\Middleware\RequireSession;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -14,6 +16,11 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->throttleApi();
+
+        $middleware->alias([
+            'key.scope' => EnforceKeyScope::class,
+            'session' => RequireSession::class,
+        ]);
 
         // The app sits behind a reverse proxy in every deployment (Railway's
         // edge, or our own nginx in docker-compose) — without this, click

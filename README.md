@@ -20,6 +20,7 @@ A self-hosted redirect-link manager with click analytics — group your links by
 - **Expiring and password-protected links**: give a link a deadline (it answers `410 Gone` afterwards) or put a password gate in front of it — the click only counts once the visitor is through.
 - **QR code per link**, generated on the fly and public, so it can be embedded straight into a page or a printout.
 - **CSV import** for moving a batch of links in at once, with per-row errors reported back instead of failing the whole file.
+- **API keys** for scripts and integrations: read-only or read-write, optionally pinned to a single workspace, throttled per key, and shown only once. The [API reference](docs/API.md) covers the rest.
 - **Custom domains**, verified by a DNS TXT record. Once verified, that host serves the site's links at the root — `go.example.com/summer-sale` — with the same click logging, expiry and password gate, and copied links and QR codes switch to the branded address. The dashboard walks each domain through ownership → DNS → HTTPS and reports which step is still missing.
 
 ## Architecture

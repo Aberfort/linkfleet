@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AnalyticsController;
+use App\Http\Controllers\ApiKeyController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ConfigController;
 use App\Http\Controllers\DomainController;
@@ -16,9 +17,16 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::get('/config', [ConfigController::class, 'index']);
 
 // Захищені маршрути
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'key.scope'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/user', [AuthController::class, 'user']);
+
+    // Keys are managed from a signed-in session only, never with a key.
+    Route::middleware('session')->group(function () {
+        Route::get('/api-keys', [ApiKeyController::class, 'index']);
+        Route::post('/api-keys', [ApiKeyController::class, 'store']);
+        Route::delete('/api-keys/{id}', [ApiKeyController::class, 'destroy'])->whereNumber('id');
+    });
 
     Route::apiResource('workspaces', WorkspaceController::class);
     Route::get('/workspaces/{workspace}/members', [WorkspaceMemberController::class, 'index']);
