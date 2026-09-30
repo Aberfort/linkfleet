@@ -16,6 +16,7 @@ import {
 } from '@mui/material';
 import { getLink, createLink, updateLink } from '../api/links';
 import { errorMessage, validationErrors } from '../api/errors';
+import UtmBuilder from '../components/UtmBuilder';
 import type { CreateLinkPayload, UpdateLinkPayload } from '../api/links';
 
 interface FormValues {
@@ -150,7 +151,7 @@ function LinkFormPage() {
                 validationSchema={validationSchema}
                 onSubmit={onSubmit}
             >
-                {({ isSubmitting, errors, handleChange, touched, values }) => (
+                {({ isSubmitting, errors, handleChange, touched, values, setFieldValue }) => (
                     <Form>
                         <TextField
                             fullWidth
@@ -163,6 +164,8 @@ function LinkFormPage() {
                             error={touched.target_url && Boolean(errors.target_url)}
                             helperText={touched.target_url && errors.target_url}
                         />
+
+                        <UtmBuilder url={values.target_url} onChange={(url) => setFieldValue('target_url', url)} />
 
                         {!isEditing && (
                             <Box sx={{ mb: 1 }}>
