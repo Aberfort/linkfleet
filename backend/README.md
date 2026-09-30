@@ -74,6 +74,8 @@ Once verified, that host serves the site's links at the root: `go.example.com/su
 
 All lookups go through `Support\DohResolver` (DNS over HTTPS, `DNS_OVER_HTTPS_URL`) rather than the system resolver: the names are customer-supplied, and a nameserver that never answers would otherwise hold a PHP worker for as long as the resolver cares to wait. Every lookup has a 3 s timeout, and `verify`/`check` are throttled. Tests fake the HTTP layer, so none touch the network.
 
+`check` makes the app request itself once a domain points at it, so it needs more than one server worker. `docker/railway-start.sh` starts `artisan serve` with four (`PHP_CLI_SERVER_WORKERS`, which Laravel only honours together with `--no-reload`); with PHP's default single-process server the probe waits out its timeout and always reports no HTTPS.
+
 What LinkFleet does **not** do is issue certificates or register the host with your platform — that's the part outside the app. On Railway it means adding the domain to the backend service; on a VPS, a reverse proxy such as Caddy in front of the app. Also still open: per-domain short codes. `links.short_code` stays globally unique, so two sites can't both own `summer-sale`.
 
 Set `DEMO_DOMAIN` to have the seeder attach a pre-verified domain to the demo account's Docs site — only do that on a deployment that has really pointed the host at itself.
