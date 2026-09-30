@@ -60,4 +60,7 @@ Route::middleware(['auth:sanctum', 'key.scope'])->group(function () {
 
     Route::get('/sites/{site}/analytics', [AnalyticsController::class, 'site']);
     Route::get('/links/{link}/analytics', [AnalyticsController::class, 'link']);
+    // Streams up to 100k rows, hence the tighter limit.
+    Route::get('/sites/{site}/analytics/export', [AnalyticsController::class, 'exportSite'])->middleware('throttle:10,1');
+    Route::get('/links/{link}/analytics/export', [AnalyticsController::class, 'exportLink'])->middleware('throttle:10,1');
 });

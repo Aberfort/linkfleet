@@ -11,6 +11,10 @@ return [
     'api_rate_limit' => (int) env('API_RATE_LIMIT', 60),
     'api_key_rate_limit' => (int) env('API_KEY_RATE_LIMIT', 120),
 
+    // The most rows one CSV export will hold, so a single request cannot
+    // stream the whole clicks table.
+    'analytics_export_row_limit' => (int) env('ANALYTICS_EXPORT_ROW_LIMIT', 100_000),
+
     // What a customer's DNS should point at (CNAME, or A records that resolve
     // to the same place). Defaults to the app's own host; deployments behind
     // a platform that hands out a per-domain target (Railway does) override it.

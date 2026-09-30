@@ -106,8 +106,9 @@ Every user gets a workspace at registration. The migration that introduced works
 | POST | `/api/sites/{site}/links/import` | ✓ | CSV upload, see below |
 | GET/PUT/DELETE | `/api/links/{link}` | ✓ | |
 | PATCH | `/api/links/{link}/toggle` | ✓ | flips `is_active` |
-| GET | `/api/sites/{site}/analytics` | ✓ | rolled up across all its links |
-| GET | `/api/links/{link}/analytics` | ✓ | single link |
+| GET | `/api/sites/{site}/analytics` | ✓ | rolled up across all its links; `days` or `from`/`to`, `compare=previous` |
+| GET | `/api/links/{link}/analytics` | ✓ | single link, same parameters |
+| GET | `/api/sites/{site}/analytics/export`, `/api/links/{link}/analytics/export` | ✓ | every click as CSV |
 | GET | `/api/sites/{site}/domain` | ✓ | `{ domain: … \| null }` |
 | POST | `/api/sites/{site}/domain` | ✓ | attach a custom domain, replacing any existing one |
 | POST | `/api/domains/{domain}/verify` | ✓ | DNS TXT check; 422 while the record is missing |
@@ -160,7 +161,7 @@ Rows are validated individually and capped at 1000 per file — a bad row is ski
 vendor/bin/phpunit
 ```
 
-293 Feature/Unit tests — auth flow, ownership boundaries (cross-user 403s, demo-account write blocks), the redirect+click-logging path, analytics aggregation, custom-domain verification and host-based routing. `phpunit.xml` runs against an in-memory SQLite database, so no service container/setup needed.
+335 Feature/Unit tests — auth flow, ownership boundaries (cross-user 403s, demo-account write blocks), the redirect+click-logging path, analytics aggregation, custom-domain verification and host-based routing. `phpunit.xml` runs against an in-memory SQLite database, so no service container/setup needed.
 
 ```bash
 vendor/bin/pint          # check code style

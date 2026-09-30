@@ -14,7 +14,7 @@ A self-hosted redirect-link manager with click analytics — group your links by
 
 - **Workspaces and roles**: sites live in a workspace, and a workspace has owners, editors and viewers — an agency can give each client a workspace and let them see only their own links. Enforced by Laravel Policies, not just hidden in the UI.
 - **Real redirects**: `GET /r/{code}` is an actual `302` to the link's target URL — not just a stored value nobody reads.
-- **Click analytics**: every redirect logs a click (timestamp, referrer host, browser/device — parsed locally, no external APIs) and the dashboard shows a 30-day time series plus referrer/browser/device breakdowns.
+- **Click analytics**: every redirect logs a click (timestamp, referrer host, browser/device — parsed locally, no external APIs) and the dashboard shows a time series plus referrer/browser/device breakdowns for any period up to a year, optionally set against the period before it, with a one-click CSV export.
 - **Privacy by default**: visitor IPs are never stored raw. They're truncated to a /24 (IPv4) or /64 (IPv6) network and HMAC-hashed before being written to the database.
 - **Vanity or auto-generated short codes**: leave the code blank and one is generated; or pick your own.
 - **Expiring and password-protected links**: give a link a deadline (it answers `410 Gone` afterwards) or put a password gate in front of it — the click only counts once the visitor is through.
@@ -141,7 +141,7 @@ Each half also has its own README with more detail: [backend/README.md](backend/
 ## Honest limitations
 
 - No geolocation on clicks — deliberately out of scope (see [`app/Support/ClientIp.php`](backend/app/Support/ClientIp.php)'s comment): it would mean either a paid IP-geo API or bundling/hosting a GeoIP database, neither of which felt worth the added infrastructure for what this project is.
-- Analytics window is a fixed 30 days; no custom date-range picker yet.
+- "Unique visitors" is approximate by design: IPs are truncated to a /24 and hashed, so it counts networks, not people.
 - Webhooks are sent by a single queue worker by default and are never switched off automatically when an endpoint keeps failing; `link.deleted` is not sent per link when a whole site or workspace is deleted.
 - Members are added by the email of an account that already exists; there are no emailed invitations (the public demo has no mail pipeline, and registration is closed there anyway).
 - Custom domains are checked, not provisioned: LinkFleet verifies ownership and reports whether DNS and HTTPS are ready, but issuing the certificate and registering the host with the platform (a Railway custom domain, or a Caddy/nginx block on a VPS) is done outside the app. `short_code` is also still globally unique, so two sites can't both own `summer-sale`.

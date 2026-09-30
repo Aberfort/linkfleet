@@ -127,17 +127,41 @@ A link comes back with `short_url` — the address to actually share. It is the 
 |---|---|
 | `GET /api/sites/{site}/analytics` | Across all the site's links, plus `top_links` |
 | `GET /api/links/{link}/analytics` | One link |
+| `GET /api/sites/{site}/analytics/export` | Every click as CSV (see below) |
+| `GET /api/links/{link}/analytics/export` | The same for one link |
 
-Both return the last 30 days, zero-filled per day:
+All four take the same query:
+
+| Parameter | |
+|---|---|
+| `days` | The last N days ending today, 1–366. Resolved on the server's clock, so prefer it to computing dates yourself. Cannot be combined with `from`/`to` |
+| `from`, `to` | `YYYY-MM-DD`, both ends included. Either may be omitted (`to` defaults to today, `from` to 30 days before `to`). At most 366 days, and `to` may not be in the future. Days are UTC days |
+| `compare` | `previous` adds the period of equal length immediately before this one |
+
+With none of them you get the last 30 days.
 
 ```json
 {
+  "range": { "from": "2026-09-01", "to": "2026-09-30", "days": 30 },
+  "totals": { "clicks": 1043, "visitors": 388 },
   "timeseries": [{ "date": "2026-09-01", "clicks": 12 }],
   "referrers": [{ "label": "twitter.com", "clicks": 40 }],
   "browsers": [{ "label": "Chrome", "clicks": 90 }],
-  "devices": [{ "label": "mobile", "clicks": 70 }]
+  "devices": [{ "label": "mobile", "clicks": 70 }],
+  "top_links": [{ "id": 71, "short_code": "spring", "short_url": "https://go.example.com/spring", "period_clicks": 210, "clicks_count": 4301 }],
+  "previous": {
+    "range": { "from": "2026-08-02", "to": "2026-08-31", "days": 30 },
+    "totals": { "clicks": 870, "visitors": 401 },
+    "timeseries": [{ "date": "2026-08-02", "clicks": 9 }]
+  }
 }
 ```
+
+`timeseries` has one entry per day in the range, quiet days as zero. `previous` is present only with `compare=previous`. `top_links` (site only) is ranked by `period_clicks` — clicks inside the range — and also carries the all-time `clicks_count`.
+
+`visitors` is **approximate**: to avoid storing IP addresses, LinkFleet truncates each to its /24 network and hashes it, and `visitors` counts distinct hashes. Two people on one network count once. Read it as "unique networks".
+
+**CSV export.** One row per click, in the order they were recorded: `time_utc, link, referrer, browser, browser_version, platform, device_type`. No IP address in any form. It opens correctly in Excel (UTF-8 with a byte-order mark), a cell that a spreadsheet would run as a formula (starting with `=`, `+`, `-` or `@`) is defused with a leading `'`, and one export is capped at 100 000 rows — narrow the range for more. It is a plain `GET`, so a read-only key can use it, and it is rate-limited to 10 per minute.
 
 Visitor IP addresses are never stored as they are: they are truncated to a network and hashed first (see the README).
 
