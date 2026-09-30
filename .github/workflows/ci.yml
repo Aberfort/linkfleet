@@ -19,6 +19,9 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.2'
+          # moneyphp/money (pulled in by laravel/cashier-paddle) needs bcmath;
+          # the production image installs it too.
+          extensions: bcmath
           coverage: none
 
       - name: Cache composer dependencies
